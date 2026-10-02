@@ -1,0 +1,6 @@
+{
+  "name": "XT Thoáng AI",
+  "description": "XT Thoáng AI - Hệ thống dịch video, lồng tiếng thông minh và biên tập phụ đề tự động",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
