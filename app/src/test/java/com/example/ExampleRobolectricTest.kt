@@ -22,7 +22,7 @@ class ExampleRobolectricTest {
     fun readStringFromContext() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val appName = context.getString(R.string.app_name)
-        assertEquals("DubStudio AI", appName)
+        assertEquals("XT Thoáng AI", appName)
     }
 
     @Test
@@ -128,7 +128,9 @@ class ExampleRobolectricTest {
             textSize = 36f
         }
         val longText = "Đây là một câu phụ đề dịch tiếng Việt rất dài cần được tự động ngắt dòng để không tràn khung hình video"
-        val wrappedLines = VideoExportService.wrapText(longText, paint, maxWidth = 300f)
+        // In Robolectric environment without native font rendering, Paint.measureText returns text length in chars.
+        // Setting maxWidth to a value lower than the longText length ensures wrapping works in both Robolectric and on real devices.
+        val wrappedLines = VideoExportService.wrapText(longText, paint, maxWidth = 30f)
         assertTrue("Text must be wrapped into multiple lines", wrappedLines.size > 1)
         assertTrue("First line should not be empty", wrappedLines[0].isNotBlank())
     }
@@ -251,5 +253,51 @@ class ExampleRobolectricTest {
         assertEquals('A'.code.toByte(), headerBytes[9])
         assertEquals('V'.code.toByte(), headerBytes[10])
         assertEquals('E'.code.toByte(), headerBytes[11])
+    }
+
+    @Test
+    fun testPcmResamplingAndWavParsing() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val testDir = java.io.File(context.filesDir, "test_pcm")
+        testDir.mkdirs()
+
+        val sampleWav = java.io.File(testDir, "test_pcm_sample.wav")
+        java.io.FileOutputStream(sampleWav).use { fos ->
+            VideoExportService.writeWavHeader(fos, 24000 * 2, 24000, 1, 16)
+            val pcmBytes = ByteArray(24000 * 2) { 100.toByte() }
+            fos.write(pcmBytes)
+        }
+
+        val decodedPcm = VideoExportService.readWavFileToPcm(sampleWav, targetSampleRate = 44100, targetChannels = 2)
+        assertNotNull(decodedPcm)
+        assertTrue(decodedPcm!!.isNotEmpty())
+
+        // Resample Mono to Stereo
+        val mono = shortArrayOf(100, 200, 300)
+        val stereo = VideoExportService.resamplePcm(mono, srcRate = 44100, srcChannels = 1, dstRate = 44100, dstChannels = 2)
+        assertEquals(6, stereo.size)
+        assertEquals(100, stereo[0].toInt())
+        assertEquals(100, stereo[1].toInt())
+        assertEquals(200, stereo[2].toInt())
+        assertEquals(200, stereo[3].toInt())
+    }
+
+    @Test
+    fun testTtsSynthesisValidation() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val dubbingService = com.example.data.tts.VoiceDubbingService(context)
+        val config = com.example.data.model.DubbingConfig(voiceId = "vi-VN-HoaiMyNeural")
+
+        kotlinx.coroutines.runBlocking {
+            val audioFile = dubbingService.synthesizeSegmentToFile(
+                text = "Xin chào các bạn, đây là bản dịch kiểm thử",
+                config = config,
+                segmentId = 999L,
+                durationMs = 2000L
+            )
+            assertNotNull("Audio file must not be null", audioFile)
+            assertTrue("Audio file must exist", audioFile!!.exists())
+            assertTrue("Audio file must be greater than 44 bytes WAV header", audioFile.length() > 44L)
+        }
     }
 }

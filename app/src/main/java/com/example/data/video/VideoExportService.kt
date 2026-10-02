@@ -22,16 +22,19 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
 import androidx.core.content.FileProvider
+import com.example.data.model.DubbingConfig
 import com.example.data.model.MaskConfig
 import com.example.data.model.SubtitleConfig
 import com.example.data.model.SubtitleSegment
 import com.example.data.model.VideoProject
+import com.example.data.tts.VoiceDubbingService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -334,25 +337,42 @@ object VideoExportService {
             } catch (e: Exception) {
                 Log.e(TAG, "Could not open asset $sampleAssetCandidate: ${e.message}")
             }
+            if (!fallbackSource.exists() || fallbackSource.length() < 1000) {
+                createFallbackSampleVideo(fallbackSource, project.durationMs.coerceIn(5000L, 20000L))
+            }
         }
         return fallbackSource
     }
 
     /**
-     * Executes video rendering with hardcoded subtitle burn-in and mask overlay:
-     * - Decodes video frames
-     * - Draws subtitle mask at maskConfig.yPercent to cover original Chinese subtitles
-     * - Draws Vietnamese translated subtitles with bold font and high-contrast outline
-     * - Encodes with Android hardware MediaCodec (H.264 / AVC)
-     * - Remuxes original audio into MP4 container via MediaMuxer
-     * - Validates output file (exists && length > 0)
-     * - Automatically copies to Downloads/XThoang_AI and Gallery
+     * Backward-compatible overload without voiceDubbingService parameter
      */
     suspend fun renderVideoWithFFmpeg(
         context: Context,
         project: VideoProject,
         segments: List<SubtitleSegment>,
         options: FFmpegOptions = FFmpegOptions(),
+        onProgress: (step: Int, percentage: Float, message: String) -> Unit
+    ): File = renderVideoWithFFmpeg(
+        context = context,
+        project = project,
+        segments = segments,
+        options = options,
+        voiceDubbingService = null,
+        onProgress = onProgress
+    )
+
+    /**
+     * Executes complete video rendering with hardcoded subtitle burn-in, mask overlay,
+     * intelligent audio mixing (TTS Vietnamese voice + Ducked background music),
+     * and hardware encoding to H.264/AAC MP4.
+     */
+    suspend fun renderVideoWithFFmpeg(
+        context: Context,
+        project: VideoProject,
+        segments: List<SubtitleSegment>,
+        options: FFmpegOptions = FFmpegOptions(),
+        voiceDubbingService: VoiceDubbingService? = null,
         onProgress: (step: Int, percentage: Float, message: String) -> Unit
     ): File = withContext(Dispatchers.IO) {
         onProgress(1, 0.05f, "Chuẩn bị tệp video nguồn và phân tích luồng...")
@@ -369,7 +389,41 @@ object VideoExportService {
         if (!moviesDir.exists()) moviesDir.mkdirs()
         val outputFile = File(moviesDir, outputFileName)
 
-        onProgress(1, 0.12f, "Khởi tạo bộ xử lý video và nạp cấu hình phụ đề...")
+        // STEP 1: Sinh file âm thanh lồng tiếng TTS tiếng Việt cho toàn bộ các đoạn phụ đề
+        val dubbedAudioFiles = mutableListOf<Pair<SubtitleSegment, File>>()
+        if (voiceDubbingService != null) {
+            val activeSegments = segments.filter { it.vietnameseText.isNotBlank() }
+            activeSegments.forEachIndexed { idx, seg ->
+                val progress = 0.06f + 0.14f * ((idx + 1).toFloat() / activeSegments.size.toFloat())
+                onProgress(1, progress, "Đang tạo giọng đọc TTS [${idx + 1}/${activeSegments.size}]...")
+                val audioFile = voiceDubbingService.synthesizeSegmentToFile(
+                    text = seg.vietnameseText,
+                    config = project.dubbingConfig,
+                    segmentId = seg.id,
+                    durationMs = seg.durationMs
+                )
+                if (audioFile != null && audioFile.exists() && audioFile.length() > 44) {
+                    dubbedAudioFiles.add(seg to audioFile)
+                }
+            }
+        }
+
+        // STEP 2: Hòa âm thông minh (Audio Ducking: Giảm nhạc nền khi có tiếng nói) & mã hóa sang AAC chuẩn
+        onProgress(1, 0.22f, "Đang hòa âm (Audio Ducking) & mã hóa rãnh âm thanh AAC...")
+        val masterAacFile = try {
+            prepareMasterAudioTrack(
+                context = context,
+                sourceVideoFile = sourceVideoFile,
+                durationMs = project.durationMs.coerceAtLeast(3000L),
+                ttsSegments = dubbedAudioFiles,
+                dubbingConfig = project.dubbingConfig
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Audio mixing failed: ${e.message}", e)
+            null
+        }
+
+        onProgress(2, 0.30f, "Khởi tạo bộ xử lý video và nạp cấu hình phụ đề...")
 
         var burnInSuccess = false
         var failureReason: String? = null
@@ -377,6 +431,7 @@ object VideoExportService {
         try {
             burnInSuccess = burnInSubtitlesWithMediaCodec(
                 sourceVideoFile = sourceVideoFile,
+                masterAudioAacFile = masterAacFile,
                 outputFile = outputFile,
                 project = project,
                 segments = segments,
@@ -393,6 +448,13 @@ object VideoExportService {
             Log.w(TAG, "Burn-in did not complete ($failureReason). Falling back to direct container copy.")
             sourceVideoFile.copyTo(outputFile, overwrite = true)
         }
+
+        // Clean up temporary master AAC file
+        try {
+            if (masterAacFile != null && masterAacFile.exists()) {
+                masterAacFile.delete()
+            }
+        } catch (_: Exception) {}
 
         // Validate that MP4 is non-empty and accessible
         if (!outputFile.exists() || outputFile.length() <= 0) {
@@ -421,10 +483,11 @@ object VideoExportService {
     /**
      * Core Video Burn-in Engine:
      * Reads frames from source video, renders the mask bar and Vietnamese subtitles,
-     * encodes to H.264, and muxes audio into MP4.
+     * encodes to H.264, and muxes AAC audio (Voice Dubbing + Background Music) into MP4.
      */
     private fun burnInSubtitlesWithMediaCodec(
         sourceVideoFile: File,
+        masterAudioAacFile: File?,
         outputFile: File,
         project: VideoProject,
         segments: List<SubtitleSegment>,
@@ -455,8 +518,8 @@ object VideoExportService {
             val targetW: Int
             val targetH: Int
             if (isVertical) {
-                targetW = 544  // 544 is multiple of 16 (close to 540)
-                targetH = 960  // 960 is multiple of 16
+                targetW = 544
+                targetH = 960
             } else {
                 targetW = 960
                 targetH = 544
@@ -465,23 +528,33 @@ object VideoExportService {
             val fps = 24
             val totalFrames = ((durationMs / 1000f) * fps).toInt().coerceIn(1, 3600)
 
-            // Setup MediaExtractor for Audio track
+            // Setup MediaExtractor for Audio track (Prioritize mixed master AAC audio file)
             extractor = MediaExtractor()
-            extractor.setDataSource(sourceVideoFile.absolutePath)
             var audioTrackInExtractor = -1
             var audioFormat: MediaFormat? = null
 
-            for (i in 0 until extractor.trackCount) {
-                val format = extractor.getTrackFormat(i)
-                val mime = format.getString(MediaFormat.KEY_MIME) ?: ""
-                if (mime.startsWith("audio/") && audioTrackInExtractor == -1) {
-                    audioTrackInExtractor = i
-                    audioFormat = format
-                    break
-                }
+            val audioSourceFile = if (masterAudioAacFile != null && masterAudioAacFile.exists() && masterAudioAacFile.length() > 100) {
+                masterAudioAacFile
+            } else {
+                sourceVideoFile
             }
 
-            // Setup Encoder
+            try {
+                extractor.setDataSource(audioSourceFile.absolutePath)
+                for (i in 0 until extractor.trackCount) {
+                    val format = extractor.getTrackFormat(i)
+                    val mime = format.getString(MediaFormat.KEY_MIME) ?: ""
+                    if (mime.startsWith("audio/") && audioTrackInExtractor == -1) {
+                        audioTrackInExtractor = i
+                        audioFormat = format
+                        break
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Audio source extraction setup failed: ${e.message}")
+            }
+
+            // Setup Video Encoder (H.264 / AVC)
             encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
             val colorFormat = selectColorFormat(encoder.codecInfo, MediaFormat.MIMETYPE_VIDEO_AVC)
 
@@ -504,7 +577,8 @@ object VideoExportService {
             val audioBuffer = ByteBuffer.allocate(512 * 1024)
             val audioBufferInfo = MediaCodec.BufferInfo()
 
-            // Interleave audio samples in lockstep with video presentation timestamps
+            // Interleave audio samples in lockstep with video presentation timestamps, ensuring monotonic PTS
+            var lastAudioPtsUs = -1L
             val interleaveAudio: (Long) -> Unit = { targetPtsUs ->
                 if (isMuxerStarted && audioTrackInExtractor != -1 && muxerAudioTrack != -1) {
                     while (true) {
@@ -514,9 +588,13 @@ object VideoExportService {
                         }
                         val sampleSize = extractor.readSampleData(audioBuffer, 0)
                         if (sampleSize < 0) break
+
+                        val currentPts = if (sampleTime > lastAudioPtsUs) sampleTime else (lastAudioPtsUs + 1000L)
+                        lastAudioPtsUs = currentPts
+
                         audioBufferInfo.offset = 0
                         audioBufferInfo.size = sampleSize
-                        audioBufferInfo.presentationTimeUs = sampleTime
+                        audioBufferInfo.presentationTimeUs = currentPts
                         audioBufferInfo.flags = extractor.sampleFlags
                         try {
                             muxer.writeSampleData(muxerAudioTrack, audioBuffer, audioBufferInfo)
@@ -550,6 +628,7 @@ object VideoExportService {
                                     if (audioTrackInExtractor != -1) {
                                         extractor.selectTrack(audioTrackInExtractor)
                                     }
+                                    Log.d(TAG, "Added audio track to muxer successfully (mime: ${audioFormat.getString(MediaFormat.KEY_MIME)})")
                                 } catch (e: Exception) {
                                     Log.w(TAG, "Cannot add audio track to muxer: ${e.message}")
                                     muxerAudioTrack = -1
@@ -637,8 +716,8 @@ object VideoExportService {
                 interleaveAudio(timeUs + 250_000L)
 
                 // Report progress
-                val pct = 0.15f + 0.70f * (frameIdx.toFloat() / totalFrames)
-                onProgress(2, pct, "Đang nhúng dải che & phụ đề Tiếng Việt (${frameIdx + 1}/$totalFrames)...")
+                val pct = 0.30f + 0.58f * (frameIdx.toFloat() / totalFrames)
+                onProgress(2, pct, "Đang nhúng dải che, phụ đề & hòa âm (${frameIdx + 1}/$totalFrames)...")
             }
 
             // Signal End of Stream
@@ -668,6 +747,467 @@ object VideoExportService {
             try { encoder?.stop(); encoder?.release() } catch (_: Exception) {}
             try { muxer?.release() } catch (_: Exception) {}
             try { extractor?.release() } catch (_: Exception) {}
+        }
+    }
+
+    /**
+     * Module: Complete Audio Mixer & AAC Encoder
+     * 1. Decodes background audio from source video into PCM (or generates silence if no audio)
+     * 2. Reads all synthesized TTS speech segments into PCM
+     * 3. Applies intelligent Audio Ducking: background audio is lowered to originalAudioVolume during speech,
+     *    and returns to 100% during pauses; TTS speech is mixed at dubVoiceVolume.
+     * 4. Encodes the mixed PCM stream into standard AAC (audio/mp4a-latm) in a clean .m4a container.
+     */
+    fun prepareMasterAudioTrack(
+        context: Context,
+        sourceVideoFile: File,
+        durationMs: Long,
+        ttsSegments: List<Pair<SubtitleSegment, File>>,
+        dubbingConfig: DubbingConfig
+    ): File? {
+        val sampleRate = 44100
+        val channels = 2
+        val totalDurationSec = (durationMs.toFloat() / 1000f).coerceAtLeast(1.0f)
+        val totalSamples = (totalDurationSec * sampleRate * channels).toInt()
+        val masterPcm = ShortArray(totalSamples)
+
+        // 1. Trích xuất và giải mã âm thanh nền gốc từ video nguồn sang PCM 44.1kHz Stereo
+        val bgPcm = decodeAudioToPcm(sourceVideoFile, sampleRate, channels)
+        if (bgPcm != null && bgPcm.isNotEmpty()) {
+            val copyLen = minOf(bgPcm.size, totalSamples)
+            System.arraycopy(bgPcm, 0, masterPcm, 0, copyLen)
+            Log.d(TAG, "Original background audio decoded: ${bgPcm.size} samples")
+        } else {
+            Log.d(TAG, "Source video has no audio track, initialized silent background")
+        }
+
+        // 2. Phân tích vùng phát âm thoại để áp dụng Audio Ducking
+        val duckingGain = FloatArray(totalSamples) { 1.0f }
+        val loadedTtsSegments = mutableListOf<Pair<SubtitleSegment, ShortArray>>()
+
+        for ((seg, wavFile) in ttsSegments) {
+            val segPcm = readWavFileToPcm(wavFile, sampleRate, channels)
+            if (segPcm != null && segPcm.isNotEmpty()) {
+                loadedTtsSegments.add(seg to segPcm)
+                val startSample = ((seg.startTimeMs.toFloat() / 1000f) * sampleRate * channels).toInt().coerceIn(0, totalSamples)
+                val speechSamples = segPcm.size
+                val endSample = minOf(startSample + speechSamples, totalSamples)
+
+                val duckVolume = dubbingConfig.originalAudioVolume.coerceIn(0f, 1f)
+                for (i in startSample until endSample) {
+                    duckingGain[i] = duckVolume
+                }
+            }
+        }
+
+        // 3. Áp dụng ducking cho nhạc nền và hòa trộn giọng đọc TTS
+        for (i in 0 until totalSamples) {
+            val bg = masterPcm[i] * duckingGain[i]
+            masterPcm[i] = bg.toInt().coerceIn(-32768, 32767).toShort()
+        }
+
+        for ((seg, segPcm) in loadedTtsSegments) {
+            val startSample = ((seg.startTimeMs.toFloat() / 1000f) * sampleRate * channels).toInt().coerceIn(0, totalSamples)
+            val voiceVolume = dubbingConfig.dubVoiceVolume.coerceIn(0f, 2f)
+
+            for (j in segPcm.indices) {
+                val targetIdx = startSample + j
+                if (targetIdx >= totalSamples) break
+                val mixed = (masterPcm[targetIdx] + (segPcm[j] * voiceVolume).toInt()).coerceIn(-32768, 32767)
+                masterPcm[targetIdx] = mixed.toShort()
+            }
+        }
+
+        // 4. Mã hóa toàn bộ dữ liệu PCM đã hòa âm sang chuẩn AAC (.m4a)
+        val cacheAudioDir = File(context.cacheDir, "master_audio").apply { mkdirs() }
+        val outputAacFile = File(cacheAudioDir, "master_dub_${System.currentTimeMillis()}.m4a")
+
+        val encodeSuccess = encodePcmToAacFile(masterPcm, outputAacFile, sampleRate, channels, 128000)
+        return if (encodeSuccess && outputAacFile.exists() && outputAacFile.length() > 0) {
+            Log.d(TAG, "Master AAC audio track ready: ${outputAacFile.absolutePath} (${outputAacFile.length()} bytes)")
+            outputAacFile
+        } else {
+            Log.w(TAG, "Could not encode master AAC audio file")
+            null
+        }
+    }
+
+    /**
+     * Encodes raw 16-bit PCM samples into standard AAC (audio/mp4a-latm) inside M4A container
+     */
+    fun encodePcmToAacFile(
+        pcmData: ShortArray,
+        outputM4aFile: File,
+        sampleRate: Int = 44100,
+        channels: Int = 2,
+        bitrate: Int = 128000
+    ): Boolean {
+        var encoder: MediaCodec? = null
+        var muxer: MediaMuxer? = null
+        return try {
+            val aacFormat = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, channels).apply {
+                setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
+                setInteger(MediaFormat.KEY_BIT_RATE, bitrate)
+                setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 16384)
+            }
+            encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
+            encoder.configure(aacFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            encoder.start()
+
+            muxer = MediaMuxer(outputM4aFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            var audioTrack = -1
+            var isMuxerStarted = false
+
+            val byteBuffer = ByteBuffer.allocate(pcmData.size * 2).order(ByteOrder.LITTLE_ENDIAN)
+            for (s in pcmData) {
+                byteBuffer.putShort(s)
+            }
+            byteBuffer.flip()
+
+            val bufferInfo = MediaCodec.BufferInfo()
+            var inputFinished = false
+            var sampleTimeUs = 0L
+            val bytesPerSec = sampleRate * channels * 2
+
+            while (true) {
+                if (!inputFinished) {
+                    val inIdx = encoder.dequeueInputBuffer(10000L)
+                    if (inIdx >= 0) {
+                        val inBuf = encoder.getInputBuffer(inIdx)
+                        if (inBuf != null) {
+                            inBuf.clear()
+                            val remaining = byteBuffer.remaining()
+                            val chunkSize = minOf(remaining, inBuf.capacity())
+                            if (chunkSize > 0) {
+                                val tempBytes = ByteArray(chunkSize)
+                                byteBuffer.get(tempBytes)
+                                inBuf.put(tempBytes)
+                                encoder.queueInputBuffer(inIdx, 0, chunkSize, sampleTimeUs, 0)
+                                sampleTimeUs += (chunkSize.toLong() * 1_000_000L / bytesPerSec)
+                            } else {
+                                encoder.queueInputBuffer(inIdx, 0, 0, sampleTimeUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                                inputFinished = true
+                            }
+                        }
+                    }
+                }
+
+                val outIdx = encoder.dequeueOutputBuffer(bufferInfo, 10000L)
+                if (outIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                    if (!isMuxerStarted) {
+                        audioTrack = muxer.addTrack(encoder.outputFormat)
+                        muxer.start()
+                        isMuxerStarted = true
+                    }
+                } else if (outIdx >= 0) {
+                    val outBuf = encoder.getOutputBuffer(outIdx)
+                    if (outBuf != null && bufferInfo.size > 0 && isMuxerStarted) {
+                        outBuf.position(bufferInfo.offset)
+                        outBuf.limit(bufferInfo.offset + bufferInfo.size)
+                        muxer.writeSampleData(audioTrack, outBuf, bufferInfo)
+                    }
+                    encoder.releaseOutputBuffer(outIdx, false)
+                    if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                        break
+                    }
+                } else if (outIdx == MediaCodec.INFO_TRY_AGAIN_LATER && inputFinished) {
+                    if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) break
+                }
+            }
+
+            if (isMuxerStarted) {
+                muxer.stop()
+            }
+            outputM4aFile.exists() && outputM4aFile.length() > 0
+        } catch (e: Exception) {
+            Log.e(TAG, "encodePcmToAacFile failed: ${e.message}", e)
+            false
+        } finally {
+            try { encoder?.stop(); encoder?.release() } catch (_: Exception) {}
+            try { muxer?.release() } catch (_: Exception) {}
+        }
+    }
+
+    /**
+     * Decodes source audio from video file to 16-bit PCM ShortArray
+     */
+    fun decodeAudioToPcm(
+        sourceFile: File,
+        targetSampleRate: Int = 44100,
+        targetChannels: Int = 2
+    ): ShortArray? {
+        if (!sourceFile.exists() || sourceFile.length() < 1000) return null
+        var extractor: MediaExtractor? = null
+        var decoder: MediaCodec? = null
+        try {
+            extractor = MediaExtractor()
+            extractor.setDataSource(sourceFile.absolutePath)
+            var audioTrackIndex = -1
+            var format: MediaFormat? = null
+            for (i in 0 until extractor.trackCount) {
+                val trackFormat = extractor.getTrackFormat(i)
+                val mime = trackFormat.getString(MediaFormat.KEY_MIME) ?: ""
+                if (mime.startsWith("audio/")) {
+                    audioTrackIndex = i
+                    format = trackFormat
+                    break
+                }
+            }
+            if (audioTrackIndex == -1 || format == null) return null
+
+            val mime = format.getString(MediaFormat.KEY_MIME) ?: return null
+            decoder = MediaCodec.createDecoderByType(mime)
+            decoder.configure(format, null, null, 0)
+            decoder.start()
+            extractor.selectTrack(audioTrackIndex)
+
+            val srcSampleRate = if (format.containsKey(MediaFormat.KEY_SAMPLE_RATE)) format.getInteger(MediaFormat.KEY_SAMPLE_RATE) else 44100
+            val srcChannels = if (format.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) format.getInteger(MediaFormat.KEY_CHANNEL_COUNT) else 2
+
+            val pcmList = ArrayList<Short>()
+            val bufferInfo = MediaCodec.BufferInfo()
+            var inputEos = false
+            var outputEos = false
+
+            while (!outputEos) {
+                if (!inputEos) {
+                    val inIdx = decoder.dequeueInputBuffer(10000L)
+                    if (inIdx >= 0) {
+                        val inBuf = decoder.getInputBuffer(inIdx)
+                        if (inBuf != null) {
+                            val sampleSize = extractor.readSampleData(inBuf, 0)
+                            if (sampleSize < 0) {
+                                decoder.queueInputBuffer(inIdx, 0, 0, 0L, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                                inputEos = true
+                            } else {
+                                decoder.queueInputBuffer(inIdx, 0, sampleSize, extractor.sampleTime, 0)
+                                extractor.advance()
+                            }
+                        }
+                    }
+                }
+
+                val outIdx = decoder.dequeueOutputBuffer(bufferInfo, 10000L)
+                if (outIdx >= 0) {
+                    val outBuf = decoder.getOutputBuffer(outIdx)
+                    if (outBuf != null && bufferInfo.size > 0) {
+                        outBuf.position(bufferInfo.offset)
+                        outBuf.limit(bufferInfo.offset + bufferInfo.size)
+                        val shortBuf = outBuf.order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+                        while (shortBuf.hasRemaining()) {
+                            pcmList.add(shortBuf.get())
+                        }
+                    }
+                    decoder.releaseOutputBuffer(outIdx, false)
+                    if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                        outputEos = true
+                    }
+                } else if (outIdx == MediaCodec.INFO_TRY_AGAIN_LATER && inputEos) {
+                    break
+                }
+            }
+
+            if (pcmList.isEmpty()) return null
+            val rawShorts = ShortArray(pcmList.size) { pcmList[it] }
+            return resamplePcm(rawShorts, srcSampleRate, srcChannels, targetSampleRate, targetChannels)
+        } catch (e: Exception) {
+            Log.w(TAG, "decodeAudioToPcm failed: ${e.message}")
+            return null
+        } finally {
+            try { decoder?.stop(); decoder?.release() } catch (_: Exception) {}
+            try { extractor?.release() } catch (_: Exception) {}
+        }
+    }
+
+    /**
+     * Reads a WAV file and returns normalized 16-bit PCM samples
+     */
+    fun readWavFileToPcm(
+        wavFile: File,
+        targetSampleRate: Int = 44100,
+        targetChannels: Int = 2
+    ): ShortArray? {
+        if (!wavFile.exists() || wavFile.length() <= 44) return null
+        return try {
+            val bytes = wavFile.readBytes()
+            if (bytes.size <= 44) return null
+            if (bytes[0] != 'R'.code.toByte() || bytes[1] != 'I'.code.toByte() || bytes[2] != 'F'.code.toByte() || bytes[3] != 'F'.code.toByte()) {
+                return null
+            }
+            val bb = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+            val channels = bb.getShort(22).toInt().coerceAtLeast(1)
+            val sampleRate = bb.getInt(24).coerceAtLeast(8000)
+
+            var dataOffset = 36
+            var dataSize = bytes.size - 44
+            for (i in 12 until bytes.size - 8) {
+                if (bytes[i] == 'd'.code.toByte() && bytes[i + 1] == 'a'.code.toByte() && bytes[i + 2] == 't'.code.toByte() && bytes[i + 3] == 'a'.code.toByte()) {
+                    dataOffset = i + 8
+                    dataSize = bb.getInt(i + 4)
+                    break
+                }
+            }
+
+            if (dataOffset >= bytes.size) return null
+            val validSize = minOf(dataSize, bytes.size - dataOffset)
+            if (validSize <= 0) return null
+
+            val sampleCount = validSize / 2
+            val shorts = ShortArray(sampleCount)
+            bb.position(dataOffset)
+            for (i in 0 until sampleCount) {
+                shorts[i] = bb.short
+            }
+            resamplePcm(shorts, sampleRate, channels, targetSampleRate, targetChannels)
+        } catch (e: Exception) {
+            Log.w(TAG, "readWavFileToPcm failed: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Linear interpolation PCM resampler & channel converter
+     */
+    fun resamplePcm(
+        input: ShortArray,
+        srcRate: Int,
+        srcChannels: Int,
+        dstRate: Int,
+        dstChannels: Int
+    ): ShortArray {
+        if (input.isEmpty()) return ShortArray(0)
+
+        // 1. Channel conversion
+        val channelConverted = if (srcChannels == dstChannels) {
+            input
+        } else if (srcChannels == 1 && dstChannels == 2) {
+            // Mono -> Stereo
+            val out = ShortArray(input.size * 2)
+            for (i in input.indices) {
+                out[i * 2] = input[i]
+                out[i * 2 + 1] = input[i]
+            }
+            out
+        } else if (srcChannels == 2 && dstChannels == 1) {
+            // Stereo -> Mono
+            val out = ShortArray(input.size / 2)
+            for (i in out.indices) {
+                val left = input[i * 2].toInt()
+                val right = input[i * 2 + 1].toInt()
+                out[i] = ((left + right) / 2).toShort()
+            }
+            out
+        } else {
+            input
+        }
+
+        // 2. Rate conversion
+        if (srcRate == dstRate) return channelConverted
+
+        val numInputFrames = channelConverted.size / dstChannels
+        val ratio = dstRate.toDouble() / srcRate.toDouble()
+        val numOutputFrames = (numInputFrames * ratio).toInt()
+        val output = ShortArray(numOutputFrames * dstChannels)
+
+        for (frame in 0 until numOutputFrames) {
+            val srcPos = frame / ratio
+            val srcIndex = srcPos.toInt().coerceIn(0, numInputFrames - 1)
+            val nextIndex = (srcIndex + 1).coerceIn(0, numInputFrames - 1)
+            val frac = (srcPos - srcIndex).toFloat()
+
+            for (ch in 0 until dstChannels) {
+                val s1 = channelConverted[srcIndex * dstChannels + ch].toFloat()
+                val s2 = channelConverted[nextIndex * dstChannels + ch].toFloat()
+                val interpolated = (s1 + frac * (s2 - s1)).toInt().coerceIn(-32768, 32767).toShort()
+                output[frame * dstChannels + ch] = interpolated
+            }
+        }
+        return output
+    }
+
+    /**
+     * Fallback mock sample generator if bundled assets are missing
+     */
+    private fun createFallbackSampleVideo(outputFile: File, durationMs: Long = 10000L) {
+        try {
+            outputFile.parentFile?.mkdirs()
+            val width = 544
+            val height = 960
+            val fps = 24
+            val totalFrames = ((durationMs / 1000f) * fps).toInt().coerceIn(24, 720)
+
+            val encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+            val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
+                setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar)
+                setInteger(MediaFormat.KEY_BIT_RATE, 2000000)
+                setInteger(MediaFormat.KEY_FRAME_RATE, fps)
+                setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
+            }
+            encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            encoder.start()
+
+            val muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            var videoTrack = -1
+            var isMuxerStarted = false
+            val bufferInfo = MediaCodec.BufferInfo()
+
+            val yuv = ByteArray(width * height * 3 / 2) { 128.toByte() }
+            for (i in 0 until width * height) yuv[i] = 40.toByte()
+
+            for (frame in 0 until totalFrames) {
+                val pts = frame * 1_000_000L / fps
+                val inIdx = encoder.dequeueInputBuffer(10000L)
+                if (inIdx >= 0) {
+                    val inBuf = encoder.getInputBuffer(inIdx)
+                    inBuf?.clear()
+                    inBuf?.put(yuv)
+                    encoder.queueInputBuffer(inIdx, 0, yuv.size, pts, 0)
+                }
+
+                while (true) {
+                    val outIdx = encoder.dequeueOutputBuffer(bufferInfo, 10000L)
+                    if (outIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                        if (!isMuxerStarted) {
+                            videoTrack = muxer.addTrack(encoder.outputFormat)
+                            muxer.start()
+                            isMuxerStarted = true
+                        }
+                    } else if (outIdx >= 0) {
+                        val outBuf = encoder.getOutputBuffer(outIdx)
+                        if (outBuf != null && bufferInfo.size > 0 && isMuxerStarted) {
+                            muxer.writeSampleData(videoTrack, outBuf, bufferInfo)
+                        }
+                        encoder.releaseOutputBuffer(outIdx, false)
+                    } else {
+                        break
+                    }
+                }
+            }
+
+            val inIdx = encoder.dequeueInputBuffer(10000L)
+            if (inIdx >= 0) {
+                encoder.queueInputBuffer(inIdx, 0, 0, durationMs * 1000L, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+            }
+            while (true) {
+                val outIdx = encoder.dequeueOutputBuffer(bufferInfo, 10000L)
+                if (outIdx >= 0) {
+                    val outBuf = encoder.getOutputBuffer(outIdx)
+                    if (outBuf != null && bufferInfo.size > 0 && isMuxerStarted) {
+                        muxer.writeSampleData(videoTrack, outBuf, bufferInfo)
+                    }
+                    encoder.releaseOutputBuffer(outIdx, false)
+                    if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) break
+                } else if (outIdx == MediaCodec.INFO_TRY_AGAIN_LATER) {
+                    break
+                }
+            }
+
+            if (isMuxerStarted) muxer.stop()
+            muxer.release()
+            encoder.stop()
+            encoder.release()
+        } catch (e: Exception) {
+            Log.w(TAG, "createFallbackSampleVideo failed: ${e.message}")
         }
     }
 

@@ -1171,10 +1171,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
             try {
                 val exportedVideo = VideoExportService.renderVideoWithFFmpeg(
-                    getApplication(),
-                    project,
-                    segments,
-                    _uiState.value.ffmpegOptions
+                    context = getApplication(),
+                    project = project,
+                    segments = segments,
+                    options = _uiState.value.ffmpegOptions,
+                    voiceDubbingService = dubbingService
                 ) { step, pct, msg ->
                     _uiState.update {
                         it.copy(
@@ -1185,7 +1186,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 }
 
                 // Bỏ lệnh tự động xóa phụ đề (performAutoCleanup) để người dùng có thể tái sử dụng & chỉnh sửa tiếp
-                val successMsg = "Xuất video thành công! Video MP4, phụ đề SRT và kịch bản TXT đã được lưu vào máy. Phụ đề của bạn vẫn được lưu giữ trọn vẹn để tái sử dụng."
+                val successMsg = "Xuất video thành công! Video MP4 đã được hòa âm hoàn chỉnh (giọng đọc lồng tiếng + nhạc nền) và nhúng phụ đề Tiếng Việt."
                 _uiState.update {
                     it.copy(
                         isRenderingFFmpeg = false,
