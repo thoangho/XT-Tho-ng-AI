@@ -32,6 +32,33 @@ object SubtitleFileService {
     private const val TAG = "SubtitleFileService"
 
     /**
+     * Hàm tiền xử lý bắt buộc (SRT Pure Text Extractor):
+     * Tách bỏ hoàn toàn số thứ tự, mốc thời gian, thẻ HTML, ký tự nhiễu, hashtag, bracket
+     * Chỉ giữ lại phần văn bản thuần túy trước khi đem đi dịch để chống dịch sai nghĩa.
+     */
+    fun extractPureTextForTranslation(rawText: String): String {
+        if (rawText.isBlank()) return ""
+
+        var cleaned = rawText
+        // Bỏ số thứ tự dòng nếu đứng một mình
+        cleaned = cleaned.replace(Regex("^\\d+\\s*$", RegexOption.MULTILINE), "")
+        // Bỏ mốc thời gian dạng SRT/VTT (00:00:01,000 --> 00:00:03,500)
+        cleaned = cleaned.replace(Regex("\\d{1,2}:\\d{2}(?::\\d{2})?[,\\.]\\d{1,3}\\s*-->\\s*\\d{1,2}:\\d{2}(?::\\d{2})?[,\\.]\\d{1,3}"), "")
+        // Bỏ các thẻ HTML/WebVTT như <b>, <i>, <font color="...">, <c>, <v>
+        cleaned = cleaned.replace(Regex("<[^>]*>"), "")
+        // Bỏ các ngoặc chú thích: 【...】, [...], (...), {...}
+        cleaned = cleaned.replace(Regex("[【\\[\\(\\{][^】\\]\\)\\}]*[】\\]\\)\\}]"), "")
+        // Bỏ hashtag
+        cleaned = cleaned.replace(Regex("#[\\w\\u4e00-\\u9fa5]+"), "")
+        // Bỏ emoji và ký tự biểu tượng
+        cleaned = cleaned.replace(Regex("[\\p{So}\\p{Cn}\\p{Cs}\\p{Co}]"), "")
+        // Thu gọn khoảng trắng thừa
+        cleaned = cleaned.replace(Regex("\\s+"), " ").trim()
+
+        return cleaned
+    }
+
+    /**
      * Chuyển đổi chuỗi mốc thời gian SRT/VTT sang mili-giây (milliseconds)
      * Hỗ trợ:
      * - SRT: 00:01:23,456

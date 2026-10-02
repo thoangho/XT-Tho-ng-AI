@@ -1171,32 +1171,23 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             }
 
             try {
-                val dubbedAudioFiles = mutableListOf<Pair<SubtitleSegment, File>>()
                 val dubConfig = project.dubbingConfig
 
-                segments.forEachIndexed { index, seg ->
-                    val pct = 0.1f + 0.75f * (index.toFloat() / segments.size)
+                val dubbedAudioFiles = dubbingService.synthesizeSegmentsInBatches(
+                    segments = segments,
+                    config = dubConfig
+                ) { pct, msg ->
                     _uiState.update {
                         it.copy(
-                            dubbingGenerationProgress = pct,
-                            dubbingStatusMessage = "Đang tổng hợp giọng đọc AI [${index + 1}/${segments.size}]: \"${seg.vietnameseText.take(24)}...\""
+                            dubbingGenerationProgress = 0.05f + pct * 0.85f,
+                            dubbingStatusMessage = msg
                         )
-                    }
-
-                    val audioFile = dubbingService.synthesizeSegmentToFile(
-                        text = seg.vietnameseText,
-                        config = dubConfig,
-                        segmentId = seg.id,
-                        durationMs = seg.durationMs
-                    )
-                    if (audioFile != null && audioFile.exists() && audioFile.length() > 0) {
-                        dubbedAudioFiles.add(seg to audioFile)
                     }
                 }
 
                 _uiState.update {
                     it.copy(
-                        dubbingGenerationProgress = 0.90f,
+                        dubbingGenerationProgress = 0.92f,
                         dubbingStatusMessage = "Đang đồng bộ ghép nối các đoạn thoại thành tệp audio .WAV hoàn chỉnh..."
                     )
                 }

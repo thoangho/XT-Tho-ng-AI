@@ -3,6 +3,7 @@ package com.example.data.network
 import android.util.Log
 import com.example.BuildConfig
 import com.example.data.model.SubtitleSegment
+import com.example.data.subtitle.SubtitleFileService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -473,8 +474,12 @@ object TranslationService {
     }
 
     /**
-     * Chuyển đổi prompt Gemini sang cơ chế dịch cả danh sách phân đoạn
-     * (JSON Array Batch Translation) trong 1 lần gọi API duy nhất để tối ưu tốc độ và tiết kiệm hạn ngạch.
+     * Dịch thuật theo lô (Batch Processing - 10 câu/lô):
+     * - Tiền xử lý bắt buộc tách bỏ hoàn toàn số thứ tự, mốc thời gian, HTML tag, bracket, hashtag
+     * - Chia nhỏ danh sách phụ đề thành các lô (mỗi lô 10 câu)
+     * - Chạy trên Background Thread (Dispatchers.IO)
+     * - Giải phóng RAM (System.gc()) và nghỉ ngắn (delay) sau mỗi lô để chống tràn bộ nhớ và ANR
+     * - Cập nhật tiến trình phần trăm (%) theo thời gian thực
      */
     suspend fun translateBatchSegments(
         segments: List<SubtitleSegment>,
@@ -485,53 +490,74 @@ object TranslationService {
     ): List<SubtitleSegment> = withContext(Dispatchers.IO) {
         if (segments.isEmpty()) return@withContext emptyList()
 
-        onProgress(0.05f, "Chuẩn bị gói dữ liệu ${segments.size} câu thoại để dịch hàng loạt...")
+        onProgress(0.05f, "Bắt đầu tiền xử lý văn bản và chia lô (10 câu/lô) cho ${segments.size} câu phụ đề...")
+
+        // Tiền xử lý văn bản thuần túy trước khi mang đi dịch
+        val cleanedSegments = segments.map { seg ->
+            val pureText = SubtitleFileService.extractPureTextForTranslation(seg.originalChinese)
+            seg.copy(originalChinese = if (pureText.isNotBlank()) pureText else seg.originalChinese)
+        }
 
         val effectiveKey = getEffectiveApiKey(userApiKey)
+        val batchSize = 15
+        val batches = cleanedSegments.chunked(batchSize)
+        val totalBatches = batches.size
+        val totalSegments = cleanedSegments.size
+        val finalResults = mutableListOf<SubtitleSegment>()
 
-        // Tầng 1: Thử gọi dịch hàng loạt JSON Array bằng Gemini (khi có key được cấu hình)
-        if (effectiveKey != null) {
-            try {
-                onProgress(0.20f, "Đang gửi toàn bộ danh sách phân đoạn tới Gemini AI (Batch JSON)...")
-                val batchResults = tryTranslateBatchGemini(segments, effectiveKey, videoTitle, videoCategory)
-                if (batchResults != null && batchResults.isNotEmpty()) {
-                    onProgress(0.85f, "Đã nhận kết quả dịch hàng loạt từ Gemini AI, đang hoàn thiện văn phong...")
-                    val resultMap = batchResults
-                    val polishedList = segments.map { seg ->
-                        val rawVi = resultMap[seg.id] ?: SHORT_PHRASES_DICT[seg.originalChinese.trim()] ?: ""
-                        val polishedVi = if (rawVi.isNotBlank()) {
-                            polishVietnameseDubbing(rawVi, seg.originalChinese)
-                        } else {
-                            fallbackDictionaryTranslate(seg.originalChinese)
-                        }
-                        val verifiedVi = verifyAndPreserveShortUtterances(seg.originalChinese, polishedVi)
-                        seg.copy(vietnameseText = sanitizeForTts(verifiedVi), isEdited = false)
-                    }
-                    onProgress(1.0f, "Hoàn tất dịch hàng loạt ${segments.size} câu thành công!")
-                    return@withContext polishedList
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Batch Gemini translation failed: ${e.message}, falling back to GTX...")
-            }
-        }
+        var processedCount = 0
 
-        // Tầng 2: Dịch tuần tự qua Google Neural Direct (Miễn phí 100%, không cần API Key, không giới hạn)
-        onProgress(0.20f, "Đang kết nối dịch thuật Google Neural tốc độ cao...")
-        val fallbackList = mutableListOf<SubtitleSegment>()
-        segments.forEachIndexed { i, seg ->
-            val pct = 0.20f + 0.75f * ((i + 1).toFloat() / segments.size.toFloat())
-            onProgress(pct, "Đang dịch câu [${i + 1}/${segments.size}]: \"${seg.originalChinese.take(16)}...\"")
-            val res = translateAccuratelyMultiPass(
-                chineseText = seg.originalChinese,
-                passCount = 2,
-                userApiKey = userApiKey,
-                videoTitle = videoTitle,
-                videoCategory = videoCategory
+        batches.forEachIndexed { bIndex, batch ->
+            val batchNumber = bIndex + 1
+            val startPct = (processedCount.toFloat() / totalSegments.toFloat()).coerceIn(0.05f, 0.95f)
+            onProgress(
+                startPct,
+                "Đang xử lý Lô $batchNumber/$totalBatches (${processedCount}/$totalSegments câu)..."
             )
-            fallbackList.add(seg.copy(vietnameseText = res.vietnameseText, isEdited = false))
+
+            var batchTranslatedMap: Map<Long, String>? = null
+
+            // Tầng 1: Thử dịch lô bằng Gemini Batch JSON API nếu có API Key
+            if (effectiveKey != null) {
+                try {
+                    batchTranslatedMap = tryTranslateBatchGemini(batch, effectiveKey, videoTitle, videoCategory)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Gemini Batch translation failed for batch $batchNumber: ${e.message}")
+                }
+            }
+
+            // Tầng 2 -> 5: Dịch từng câu trong lô nếu Gemini không có hoặc lỗi
+            batch.forEachIndexed { idxInBatch, seg ->
+                val rawVi = batchTranslatedMap?.get(seg.id)
+                val finalVi = if (!rawVi.isNullOrBlank()) {
+                    val polished = polishVietnameseDubbing(rawVi, seg.originalChinese)
+                    verifyAndPreserveShortUtterances(seg.originalChinese, polished)
+                } else {
+                    val multiPassRes = translateAccuratelyMultiPass(
+                        chineseText = seg.originalChinese,
+                        passCount = 2,
+                        userApiKey = userApiKey,
+                        videoTitle = videoTitle,
+                        videoCategory = videoCategory
+                    )
+                    multiPassRes.vietnameseText
+                }
+
+                finalResults.add(seg.copy(vietnameseText = sanitizeForTts(finalVi), isEdited = false))
+                processedCount++
+
+                val progress = (processedCount.toFloat() / totalSegments.toFloat()).coerceIn(0.05f, 0.98f)
+                val percentInt = (progress * 100).toInt()
+                onProgress(progress, "Đã dịch $processedCount/$totalSegments câu ($percentInt%) - Lô $batchNumber/$totalBatches")
+            }
+
+            // GIẢI PHÓNG BỘ NHỚ RAM NGAY SAU KHI HOÀN THÀNH MỖI LÔ
+            System.gc()
+            delay(80L)
         }
-        onProgress(1.0f, "Hoàn tất dịch ${segments.size} câu thoại!")
-        fallbackList
+
+        onProgress(1.0f, "Hoàn tất dịch thuật 100% cho $totalSegments câu phụ đề!")
+        finalResults
     }
 
     private fun tryTranslateBatchGemini(

@@ -231,6 +231,60 @@ class VoiceDubbingService(private val context: Context) {
     }
 
     /**
+     * Tạo file lồng tiếng TTS theo lô (Batch Processing - 10 câu/lô):
+     * - Chạy trên Background Thread (Dispatchers.IO)
+     * - Cập nhật tiến trình % thời gian thực và thông báo từng lô
+     * - Giải phóng RAM (System.gc()) và nghỉ ngắn (delay) sau mỗi lô để ngăn đơ app / văng app trên video dài 3 phút+
+     */
+    suspend fun synthesizeSegmentsInBatches(
+        segments: List<com.example.data.model.SubtitleSegment>,
+        config: DubbingConfig,
+        onProgress: (Float, String) -> Unit = { _, _ -> }
+    ): List<Pair<com.example.data.model.SubtitleSegment, File>> = withContext(Dispatchers.IO) {
+        if (segments.isEmpty()) return@withContext emptyList()
+
+        val activeSegments = segments.filter { it.vietnameseText.isNotBlank() }
+        if (activeSegments.isEmpty()) return@withContext emptyList()
+
+        val batchSize = 15
+        val batches = activeSegments.chunked(batchSize)
+        val totalBatches = batches.size
+        val totalCount = activeSegments.size
+        val results = mutableListOf<Pair<com.example.data.model.SubtitleSegment, File>>()
+
+        var processed = 0
+
+        batches.forEachIndexed { bIndex, batch ->
+            val batchNum = bIndex + 1
+            batch.forEach { seg ->
+                val durationMs = (seg.endTimeMs - seg.startTimeMs).coerceAtLeast(500L)
+                val audioFile = synthesizeSegmentToFile(
+                    text = seg.vietnameseText,
+                    config = config,
+                    segmentId = seg.id,
+                    durationMs = durationMs
+                )
+
+                if (audioFile != null && audioFile.exists() && audioFile.length() > 44) {
+                    results.add(seg to audioFile)
+                }
+
+                processed++
+                val pct = (processed.toFloat() / totalCount.toFloat()).coerceIn(0.05f, 0.98f)
+                val percentInt = (pct * 100).toInt()
+                onProgress(pct, "Đang tạo lồng tiếng $processed/$totalCount câu ($percentInt%) - Lô $batchNum/$totalBatches")
+            }
+
+            // Giải phóng RAM sau mỗi lô
+            System.gc()
+            delay(80L)
+        }
+
+        onProgress(1.0f, "Hoàn tất tạo lồng tiếng 100% cho $totalCount câu thoại!")
+        results
+    }
+
+    /**
      * Synthesizes audio to an actual file on disk for a subtitle segment
      * Performs sanitization, dynamic speech rate calibration, retry up to 3 times,
      * verifies disk write completion, and guarantees a valid non-empty audio file.
