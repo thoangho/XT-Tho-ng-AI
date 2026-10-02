@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import com.example.data.network.ApiKeyException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 
 data class StudioUiState(
@@ -1222,10 +1223,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     /**
      * Module 4: Unified Export & Auto-Cleanup
-     * Only 1 "Xuất video" action triggered from top-right
-     * Ensures complete MP4 output and clears memory/cache/state automatically
+     * Supports both full dubbed/subtitled video export and direct export without translation/subtitles if requested.
+     * Incorporates 5-minute timeout protection to ensure process safety.
      */
-    fun startExportAndCleanup() {
+    fun startExportAndCleanup(directExport: Boolean = false) {
         val project = _uiState.value.activeProject
         if (project == null) {
             _uiState.update {
@@ -1237,12 +1238,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
 
-        val segments = _uiState.value.segments
-        if (segments.isEmpty() || !_uiState.value.translationSuccessful) {
+        val segments = if (directExport) emptyList() else _uiState.value.segments
+        if (!directExport && (segments.isEmpty() || !_uiState.value.translationSuccessful)) {
             _uiState.update {
                 it.copy(
-                    errorAlertTitle = "Chưa có phụ đề",
-                    errorAlertMessage = "Video chưa có phụ đề được dịch. Vui lòng nhấn nút 'Dịch video' (Xử lý AI) ở góc trên trước khi xuất."
+                    errorAlertTitle = "Chưa có phụ đề dịch",
+                    errorAlertMessage = "Video chưa có phụ đề được dịch. Vui lòng nhấn 'Dịch video' hoặc chọn xuất trực tiếp video gốc."
                 )
             }
             return
@@ -1253,28 +1254,46 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 it.copy(
                     isRenderingFFmpeg = true,
                     ffmpegRenderProgress = 0.05f,
-                    ffmpegStatusMessage = "Khởi tạo tiến trình xuất video XThoáng AI (Hòa âm giọng đọc + Che phụ đề cũ)..."
+                    ffmpegStatusMessage = if (directExport) "Khởi tạo tiến trình xuất video trực tiếp..." else "Khởi tạo tiến trình xuất video XThoáng AI (Hòa âm giọng đọc + Che phụ đề cũ)..."
                 )
             }
 
             try {
-                val exportedVideo = VideoExportService.renderVideoWithFFmpeg(
-                    context = getApplication(),
-                    project = project,
-                    segments = segments,
-                    options = _uiState.value.ffmpegOptions,
-                    voiceDubbingService = dubbingService
-                ) { step, pct, msg ->
-                    _uiState.update {
-                        it.copy(
-                            ffmpegRenderProgress = pct,
-                            ffmpegStatusMessage = msg
-                        )
+                // Timeout safety mechanism: 5 minutes max (300,000ms)
+                val exportedVideo = withTimeoutOrNull(300_000L) {
+                    VideoExportService.renderVideoWithFFmpeg(
+                        context = getApplication(),
+                        project = project,
+                        segments = segments,
+                        options = _uiState.value.ffmpegOptions,
+                        voiceDubbingService = if (directExport) null else dubbingService
+                    ) { step, pct, msg ->
+                        _uiState.update {
+                            it.copy(
+                                ffmpegRenderProgress = pct,
+                                ffmpegStatusMessage = msg
+                            )
+                        }
                     }
                 }
 
-                // Bỏ lệnh tự động xóa phụ đề (performAutoCleanup) để người dùng có thể tái sử dụng & chỉnh sửa tiếp
-                val successMsg = "Xuất video thành công! Video MP4 đã được hòa âm hoàn chỉnh (giọng đọc lồng tiếng + nhạc nền) và nhúng phụ đề Tiếng Việt."
+                if (exportedVideo == null) {
+                    _uiState.update {
+                        it.copy(
+                            isRenderingFFmpeg = false,
+                            errorAlertTitle = "Quá thời gian xuất video",
+                            errorAlertMessage = "Tiến trình xuất video đã vượt quá thời gian cho phép (5 phút). Hệ thống đã tự động ngắt an toàn. Vui lòng thử lại với Preset Ultrafast."
+                        )
+                    }
+                    return@launch
+                }
+
+                val successMsg = if (directExport) {
+                    "Xuất video gốc trực tiếp thành công! Video MP4 đã được lưu vào máy."
+                } else {
+                    "Xuất video thành công! Video MP4 đã được hòa âm hoàn chỉnh (giọng đọc lồng tiếng + nhạc nền) và nhúng phụ đề Tiếng Việt."
+                }
+
                 _uiState.update {
                     it.copy(
                         isRenderingFFmpeg = false,
@@ -1294,6 +1313,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 }
             }
         }
+    }
+
+    fun startDirectVideoExport() {
+        startExportAndCleanup(directExport = true)
     }
 
     private suspend fun performAutoCleanup(projectId: String) {

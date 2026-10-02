@@ -518,15 +518,15 @@ object VideoExportService {
             val targetW: Int
             val targetH: Int
             if (isVertical) {
-                targetW = 544
-                targetH = 960
+                targetW = 384
+                targetH = 640
             } else {
-                targetW = 960
-                targetH = 544
+                targetW = 640
+                targetH = 384
             }
 
-            val fps = 24
-            val totalFrames = ((durationMs / 1000f) * fps).toInt().coerceIn(1, 3600)
+            val fps = 15
+            val totalFrames = ((durationMs / 1000f) * fps).toInt().coerceIn(1, 1800)
 
             // Setup MediaExtractor for Audio track (Prioritize mixed master AAC audio file)
             extractor = MediaExtractor()

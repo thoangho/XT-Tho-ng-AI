@@ -48,13 +48,34 @@ object TranslationService {
     }
 
     /**
+     * Lọc bỏ hoàn toàn từ trùng lặp / lặp từ liên tiếp do AI bị lặp nhại từ
+     */
+    fun cleanRepeatedWords(rawText: String): String {
+        if (rawText.isBlank()) return ""
+        var cleaned = rawText.trim()
+
+        // 1. Khử lặp từ đơn liên tiếp: ví dụ "ngon ngon ngon ngon" -> "ngon"
+        cleaned = cleaned.replace(Regex("(?i)\\b(\\w+)(?:\\s+\\1){2,}\\b"), "$1")
+        // 2. Khử lặp cụm từ 2-4 từ liên tiếp: ví dụ "rất là ngon rất là ngon" -> "rất là ngon"
+        cleaned = cleaned.replace(Regex("(?i)(.+?)\\s+\\1(?:\\s+\\1)+"), "$1")
+        // 3. Khử lặp dấu câu liên tiếp: ví dụ "!!!" -> "!"
+        cleaned = cleaned.replace(Regex("([!?.])\\1+"), "$1")
+        // 4. Bỏ khoảng trắng thừa
+        cleaned = cleaned.replace(Regex("\\s+"), " ").trim()
+
+        return cleaned
+    }
+
+    /**
      * Sanitize text before feeding into TTS or rendering
-     * Removes emojis, bracket markers, hashtags, and unwanted control characters
+     * Removes emojis, bracket markers, hashtags, unwanted control characters and repeated words
      */
     fun sanitizeForTts(rawText: String): String {
         if (rawText.isBlank()) return ""
 
         var cleaned = rawText
+        // Khử từ lặp liên tiếp
+        cleaned = cleanRepeatedWords(cleaned)
         // Remove common hashtag patterns #...
         cleaned = cleaned.replace(Regex("#[\\w\\u4e00-\\u9fa5]+"), "")
         // Remove brackets: 【...】 [ ... ] ( ... )
@@ -77,7 +98,7 @@ object TranslationService {
             .replace("…", "...")
             .replace("、", ", ")
         // Collapse multiple whitespace
-        cleaned = cleaned.replace(Regex("\\s+"), " ").trim()
+        cleaned = cleanRepeatedWords(cleaned)
         return cleaned
     }
 
@@ -445,6 +466,11 @@ object TranslationService {
                     })
                 })
             })
+            put("generationConfig", JSONObject().apply {
+                put("temperature", 0.2)
+                put("topP", 0.8)
+                put("maxOutputTokens", 512)
+            })
         }
 
         val request = Request.Builder()
@@ -606,6 +632,11 @@ object TranslationService {
                         })
                     })
                 })
+            })
+            put("generationConfig", JSONObject().apply {
+                put("temperature", 0.2)
+                put("topP", 0.8)
+                put("maxOutputTokens", 2048)
             })
         }
 
