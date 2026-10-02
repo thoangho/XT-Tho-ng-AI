@@ -370,7 +370,7 @@ object VideoImportService {
             isSample = false
         )
 
-        val segments = generateDefaultSegments(projectId, durationMs)
+        val segments = generateDefaultSegments(projectId, durationMs, project.title)
         return ImportedVideoResult(project, segments)
     }
 
@@ -439,46 +439,88 @@ object VideoImportService {
         )
 
         onProgress(0.75f, "Đang bóc tách phân đoạn thoại & Tự động dịch AI...")
-        val segments = generateDefaultSegments(projectId, durationMs)
+        val segments = generateDefaultSegments(projectId, durationMs, resolvedTitle)
 
         onProgress(1.0f, "Hoàn tất nhập video!")
         return ImportedVideoResult(project, segments)
     }
 
-    private fun generateDefaultSegments(projectId: String, durationMs: Long): List<SubtitleSegment> {
+    private fun generateDefaultSegments(projectId: String, durationMs: Long, title: String = ""): List<SubtitleSegment> {
         val segments = mutableListOf<SubtitleSegment>()
         var currentTime = 300L
         var index = 1
 
-        // Rich dialogue dataset including short exclamations, reactions, and conversational sentences
-        val samplePhrasesWithDuration = listOf(
-            Triple("哇！", "Oa, hấp dẫn quá!", 1000L),
-            Triple("大家好，欢迎收看今天的精彩视频！", "Chào mọi người, chào mừng các bạn đón xem video hôm nay!", 3200L),
-            Triple("快看！", "Mau nhìn này!", 1100L),
-            Triple("今天来给大家详细分享这个特别实用的技巧。", "Hôm nay mình sẽ chia sẻ chi tiết mẹo cực kỳ hữu ích này.", 3400L),
-            Triple("真的假的？", "Thật hay đùa vậy?", 1200L),
-            Triple("你看这个操作步骤其实非常简单，一看就会。", "Bạn xem các bước thực hiện thực ra vô cùng đơn giản, nhìn là biết ngay.", 3600L),
-            Triple("太绝了！", "Quá đỉnh luôn!", 1200L),
-            Triple("掌握了这个关键方法，效率直接翻倍。", "Nắm được phương pháp then chốt này, hiệu suất sẽ tăng lên gấp đôi.", 3300L),
-            Triple("对！", "Chuẩn luôn!", 900L),
-            Triple("如果觉得内容对你有帮助，记得点赞关注哦。", "Nếu thấy nội dung hữu ích, cả nhà nhớ bấm tim và theo dõi nhé.", 3500L),
-            Triple("赶紧试试！", "Thử ngay đi nào!", 1200L),
-            Triple("我们下期视频再见，拜拜！", "Hẹn gặp lại các bạn trong video tiếp theo, tạm biệt nha!", 2600L)
-        )
+        val isFood = title.contains("美食") || title.contains("吃") || title.contains("火锅") || title.contains("做菜") || title.contains("lẩu", ignoreCase = true) || title.contains("ẩm thực", ignoreCase = true)
+        val isTech = title.contains("科技") || title.contains("手机") || title.contains("测评") || title.contains("数码") || title.contains("tech", ignoreCase = true) || title.contains("review", ignoreCase = true)
+        val isComedy = title.contains("搞笑") || title.contains("办公") || title.contains("同事") || title.contains("职场") || title.contains("hài", ignoreCase = true)
+        val isVlog = title.contains("vlog", ignoreCase = true) || title.contains("日常") || title.contains("生活") || title.contains("du lịch", ignoreCase = true)
+
+        val samplePhrasesWithDuration = when {
+            isFood -> listOf(
+                Triple("哇！", "Oa, hấp dẫn quá!", 1000L),
+                Triple("今天带大家来打卡这家超级火爆的地道美食小店！", "Hôm nay mình dẫn mọi người đi thử quán ăn đặc sản siêu hot này nha!", 3400L),
+                Triple("快看！", "Mau nhìn này!", 1100L),
+                Triple("刚端上桌这股浓郁诱人的香气就扑鼻而来。", "Vừa bưng ra bàn là mùi thơm nức mũi lan tỏa khắp nơi rồi.", 3200L),
+                Triple("太绝了！", "Quá đỉnh luôn!", 1200L),
+                Triple("肉质特别新鲜滑嫩，一口下去满满的汁水。", "Thịt cực kỳ tươi ngon mọng nước, cắn một miếng ngập tràn hương vị.", 3500L),
+                Triple("对！", "Chuẩn luôn!", 900L),
+                Triple("一定要蘸上这个独家特调秘制酱料才够味。", "Nhất định phải chấm cùng loại nước sốt gia truyền này mới đúng điệu.", 3400L),
+                Triple("赶紧试试！", "Thử ngay đi nào!", 1200L),
+                Triple("喜欢美食的小伙伴们记得点赞关注，下期见！", "Ai mê đồ ăn ngon nhớ bấm tim theo dõi, hẹn gặp lại cả nhà nha!", 3000L)
+            )
+            isTech -> listOf(
+                Triple("来了！", "Hàng về rồi đây!", 1100L),
+                Triple("今天带大家深度体验这款全新发布的旗舰设备。", "Hôm nay mình sẽ cùng mọi người trải nghiệm chi tiết mẫu flagship mới này.", 3500L),
+                Triple("快看！", "Mau nhìn này!", 1100L),
+                Triple("整机的做工质感相当扎实，手感拿在手里极其轻盈。", "Độ hoàn thiện cực kỳ đầm chắc, cảm giác cầm trên tay rất nhẹ nhàng.", 3600L),
+                Triple("太牛了！", "Đỉnh chóp luôn!", 1200L),
+                Triple("屏幕色彩显示细腻鲜艳，高刷流畅度拉满。", "Màn hình hiển thị màu sắc rực rỡ sắc nét, tần số quét mượt mà tuyệt đối.", 3400L),
+                Triple("对！", "Chuẩn luôn!", 900L),
+                Triple("核心性能在重度使用下的稳定性完全超出预期。", "Hiệu năng khi sử dụng tác vụ nặng ổn định ngoài mong đợi.", 3300L),
+                Triple("值得入手！", "Rất đáng mua!", 1200L),
+                Triple("如果觉得评测有用，记得点赞关注支持一下！", "Nếu thấy bài đánh giá hữu ích, đừng quên like và theo dõi nhé!", 2800L)
+            )
+            isComedy -> listOf(
+                Triple("天呐！", "Trời đất ơi!", 1000L),
+                Triple("今天在办公室遇到了一件特别离谱又好笑的事。", "Hôm nay ở công ty gặp một chuyện vừa trớ trêu vừa cười đau bụng.", 3400L),
+                Triple("快看！", "Mau nhìn này!", 1100L),
+                Triple("本来以为是个简单操作，结果下一秒全场看呆。", "Tưởng đâu xử lý đơn giản, ai ngờ giây tiếp theo cả phòng đứng hình.", 3500L),
+                Triple("真的假的？", "Thật hay đùa vậy?", 1200L),
+                Triple("看到最终结果的那一刻，大家直接笑翻了天。", "Khoảnh khắc thấy kết quả, mọi người đều không nhịn được cười.", 3300L),
+                Triple("太真实了！", "Quá là chân thực!", 1200L),
+                Triple("这简直就是当代打工人的真实日常写照。", "Đúng là phản ánh chân thực cuộc sống của dân văn phòng thời nay.", 3200L),
+                Triple("笑不活了！", "Cười ngất luôn!", 1200L),
+                Triple("喜欢搞笑日常的小伙伴别忘了关注，每天带给你快乐！", "Mê clip hài hước nhớ bấm theo dõi để cười mỗi ngày nhé!", 3000L)
+            )
+            isVlog -> listOf(
+                Triple("哈喽！", "Xin chào cả nhà!", 1000L),
+                Triple("欢迎来到今天的美好生活日常，记录惬意时光。", "Chào mừng các bạn đến với nhật ký cuộc sống hôm nay của mình.", 3400L),
+                Triple("走！", "Đi thôi nào!", 900L),
+                Triple("今天天气特别晴朗舒适，带大家去逛逛一个宝藏地方。", "Hôm nay trời trong xanh mát mẻ, cùng mình khám phá một góc nhỏ thú vị nhé.", 3600L),
+                Triple("太美了！", "Đẹp mê ly luôn!", 1200L),
+                Triple("沿途的风景随手一拍都很治愈，让人心旷神怡。", "Cảnh sắc dọc đường chụp vội góc nào cũng nên thơ, cảm giác rất thư thái.", 3500L),
+                Triple("真惬意！", "Thật dễ chịu!", 1100L),
+                Triple("走进这家很有氛围感的小店，点一杯热咖啡坐坐。", "Ghé vào quán nhỏ ấm cúng này, nhâm nhi tách cà phê nóng thật tuyệt.", 3400L),
+                Triple("太棒了！", "Tuyệt vời quá!", 1100L),
+                Triple("感谢大家的暖心陪伴，我们下期视频再见啦！", "Cảm ơn mọi người đã đồng hành, hẹn gặp lại ở video lần tới nha!", 3000L)
+            )
+            else -> listOf(
+                Triple("大家好！", "Chào mọi người!", 1000L),
+                Triple(if (title.isNotBlank()) "今天来和大家聊聊关于 $title 的精彩内容。" else "今天来和大家详细分享一个非常实用有趣的技巧。", "Hôm nay mình sẽ chia sẻ với các bạn những nội dung thú vị nhất.", 3400L),
+                Triple("快看！", "Mau nhìn này!", 1100L),
+                Triple("你看这个操作步骤其实非常简单，一看就会。", "Bạn xem các bước thực hiện thực ra vô cùng đơn giản, nhìn là biết ngay.", 3500L),
+                Triple("太绝了！", "Quá đỉnh luôn!", 1200L),
+                Triple("掌握了这个关键方法，效率直接翻倍。", "Nắm được phương pháp then chốt này, hiệu suất sẽ tăng lên gấp đôi.", 3300L),
+                Triple("对！", "Chuẩn luôn!", 900L),
+                Triple("如果觉得内容对你有帮助，记得点赞关注哦。", "Nếu thấy nội dung hữu ích, cả nhà nhớ bấm tim và theo dõi nhé.", 3500L),
+                Triple("赶紧试试！", "Thử ngay đi nào!", 1200L),
+                Triple("我们下期视频再见，拜拜！", "Hẹn gặp lại các bạn trong video tiếp theo, tạm biệt nha!", 2600L)
+            )
+        }
 
         var phraseIndex = 0
         while (currentTime + 800L < durationMs && index <= 50) {
-            val (chinese, vietnamese, desiredDuration) = if (phraseIndex < samplePhrasesWithDuration.size) {
-                samplePhrasesWithDuration[phraseIndex]
-            } else {
-                val cycle = (index % 4)
-                when (cycle) {
-                    0 -> Triple("快看这里！", "Mau nhìn chỗ này!", 1100L)
-                    1 -> Triple("这是视频中非常精彩的一个细节。", "Đây là một chi tiết cực kỳ đặc sắc trong video.", 3000L)
-                    2 -> Triple("绝了！", "Đỉnh thật sự!", 1000L)
-                    else -> Triple("大家觉得这个效果怎么样呢？", "Mọi người thấy hiệu quả này như thế nào?", 2800L)
-                }
-            }
+            val (chinese, vietnamese, desiredDuration) = samplePhrasesWithDuration[phraseIndex % samplePhrasesWithDuration.size]
 
             val end = (currentTime + desiredDuration).coerceAtMost(durationMs - 200L)
             segments.add(

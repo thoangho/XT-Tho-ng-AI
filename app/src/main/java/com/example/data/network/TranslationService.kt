@@ -113,37 +113,52 @@ object TranslationService {
         }
 
         val effectiveKey = getEffectiveApiKey(userApiKey)
-        if (effectiveKey == null) {
-            throw ApiKeyException("Lỗi kết nối API Key, vui lòng kiểm tra lại.")
-        }
-
         var currentTranslation: String? = null
-        var engineUsed = "Gemini AI"
+        var engineUsed = "Google Neural Direct (Tốc độ cao)"
 
-        // PASS 1: Base AI translation with context injection
-        try {
-            val geminiResult = tryTranslateWithGemini(trimmed, effectiveKey, videoTitle, videoCategory)
-            if (!geminiResult.isNullOrBlank()) {
-                currentTranslation = geminiResult
-                engineUsed = "XThoáng AI (Gemini 3.5 Flash)"
+        // PASS 1: Base AI translation with context injection (if Gemini API key is configured)
+        if (effectiveKey != null) {
+            try {
+                val geminiResult = tryTranslateWithGemini(trimmed, effectiveKey, videoTitle, videoCategory)
+                if (!geminiResult.isNullOrBlank()) {
+                    currentTranslation = geminiResult
+                    engineUsed = "XThoáng AI (Gemini Flash)"
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Gemini failed: ${e.message}, falling back to Google Clients5...")
             }
-        } catch (e: ApiKeyException) {
-            throw e
-        } catch (e: Exception) {
-            Log.w(TAG, "Gemini failed: ${e.message}, falling back to GTX...")
         }
 
+        // Tầng 2: Google Clients5 Direct (Miễn phí 100%, không cần API Key, phản hồi tức thì, không bị chặn)
         if (currentTranslation.isNullOrBlank()) {
-            val gtxResult = retryWithBackoff(maxRetries = 3) {
-                tryTranslateGoogleGtx(trimmed)
+            val clients5Result = retryWithBackoff(maxRetries = 2) {
+                tryTranslateGoogleClients5(trimmed)
             }
+            if (!clients5Result.isNullOrBlank()) {
+                currentTranslation = clients5Result
+                engineUsed = "Google Neural Direct"
+            }
+        }
+
+        // Tầng 3: MyMemory Translation API dự phòng
+        if (currentTranslation.isNullOrBlank()) {
+            val myMemoryResult = tryTranslateMyMemory(trimmed)
+            if (!myMemoryResult.isNullOrBlank()) {
+                currentTranslation = myMemoryResult
+                engineUsed = "MyMemory Engine"
+            }
+        }
+
+        // Tầng 4: Google GTX Direct
+        if (currentTranslation.isNullOrBlank()) {
+            val gtxResult = tryTranslateGoogleGtx(trimmed)
             if (!gtxResult.isNullOrBlank()) {
                 currentTranslation = gtxResult
-                engineUsed = "Google Neural (Lượt 1)"
+                engineUsed = "Google GTX Direct"
             }
         }
 
-        // Fallback to phrase dictionary if network unavailable
+        // Tầng 5: Từ điển lồng tiếng dự phòng offline
         if (currentTranslation.isNullOrBlank()) {
             currentTranslation = fallbackDictionaryTranslate(trimmed)
             engineUsed = "Từ điển lồng tiếng dự phòng"
@@ -298,19 +313,79 @@ object TranslationService {
         return key.isNotBlank() && key != "MY_GEMINI_API_KEY"
     }
 
-    private fun tryTranslateGoogleGtx(chineseText: String): String? {
+    private fun tryTranslateGoogleClients5(chineseText: String): String? {
         return try {
             val encoded = URLEncoder.encode(chineseText, "UTF-8")
-            val url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=zh-CN&tl=vi&dt=t&q=$encoded"
+            val url = "https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=zh-CN&tl=vi&q=$encoded"
             val request = Request.Builder()
                 .url(url)
-                .header("User-Agent", "Mozilla/5.0 (Android; Mobile)")
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                 .get()
                 .build()
 
             httpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return null
                 val bodyStr = response.body?.string() ?: return null
+                val array = JSONArray(bodyStr)
+                if (array.length() > 0) {
+                    val sb = StringBuilder()
+                    for (i in 0 until array.length()) {
+                        val item = array.optString(i, "").trim()
+                        if (item.isNotBlank()) {
+                            if (sb.isNotEmpty()) sb.append(" ")
+                            sb.append(item)
+                        }
+                    }
+                    val res = sb.toString().trim()
+                    if (res.isNotBlank()) res else null
+                } else null
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Clients5 Translation exception: ${e.message}")
+            null
+        }
+    }
+
+    private fun tryTranslateMyMemory(chineseText: String): String? {
+        return try {
+            val encoded = URLEncoder.encode(chineseText, "UTF-8")
+            val url = "https://api.mymemory.translated.net/get?q=$encoded&langpair=zh|vi"
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", "Mozilla/5.0")
+                .get()
+                .build()
+
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return null
+                val bodyStr = response.body?.string() ?: return null
+                val json = JSONObject(bodyStr)
+                val resData = json.optJSONObject("responseData") ?: return null
+                val text = resData.optString("translatedText", "").trim()
+                if (text.isNotBlank() && !text.equals(chineseText, ignoreCase = true) && !text.startsWith("MYMEMORY WARNING")) {
+                    text
+                } else null
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "MyMemory Translation exception: ${e.message}")
+            null
+        }
+    }
+
+    private fun tryTranslateGoogleGtx(chineseText: String): String? {
+        return try {
+            val encoded = URLEncoder.encode(chineseText, "UTF-8")
+            val url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=zh-CN&tl=vi&dt=t&q=$encoded"
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                .get()
+                .build()
+
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return null
+                val bodyStr = response.body?.string() ?: return null
+                if (bodyStr.startsWith("<")) return null // HTML block page
                 parseGtxJson(bodyStr)
             }
         } catch (e: Exception) {
@@ -341,7 +416,7 @@ object TranslationService {
         videoTitle: String = "",
         videoCategory: String = ""
     ): String? {
-        val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=$apiKey"
+        val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$apiKey"
 
         val prompt = """
             Bạn là chuyên gia dịch thuật và lồng tiếng video ngắn Douyin/TikTok sang Tiếng Việt cho hệ thống XThoáng AI.
@@ -379,8 +454,8 @@ object TranslationService {
         httpClient.newCall(request).execute().use { response ->
             if (response.code in 400..403) {
                 val errBody = response.body?.string() ?: ""
-                Log.e(TAG, "Gemini API Key rejected: ${response.code} $errBody")
-                throw ApiKeyException("Lỗi kết nối API Key, vui lòng kiểm tra lại. (Mã lỗi: ${response.code})")
+                Log.w(TAG, "Gemini API Key rejected or invalid: ${response.code} $errBody")
+                return null
             }
             if (!response.isSuccessful) {
                 Log.w(TAG, "Gemini HTTP error ${response.code}")
@@ -413,42 +488,39 @@ object TranslationService {
         onProgress(0.05f, "Chuẩn bị gói dữ liệu ${segments.size} câu thoại để dịch hàng loạt...")
 
         val effectiveKey = getEffectiveApiKey(userApiKey)
-        if (effectiveKey == null) {
-            throw ApiKeyException("Lỗi kết nối API Key, vui lòng kiểm tra lại.")
-        }
 
-        // Thử gọi dịch hàng loạt JSON Array bằng Gemini 1 lần duy nhất
-        try {
-            onProgress(0.20f, "Đang gửi toàn bộ danh sách phân đoạn tới Gemini AI (Batch JSON)...")
-            val batchResults = tryTranslateBatchGemini(segments, effectiveKey, videoTitle, videoCategory)
-            if (batchResults != null && batchResults.isNotEmpty()) {
-                onProgress(0.85f, "Đã nhận kết quả dịch hàng loạt từ Gemini AI, đang hoàn thiện văn phong...")
-                val resultMap = batchResults
-                val polishedList = segments.map { seg ->
-                    val rawVi = resultMap[seg.id] ?: SHORT_PHRASES_DICT[seg.originalChinese.trim()] ?: ""
-                    val polishedVi = if (rawVi.isNotBlank()) {
-                        polishVietnameseDubbing(rawVi, seg.originalChinese)
-                    } else {
-                        fallbackDictionaryTranslate(seg.originalChinese)
+        // Tầng 1: Thử gọi dịch hàng loạt JSON Array bằng Gemini (khi có key được cấu hình)
+        if (effectiveKey != null) {
+            try {
+                onProgress(0.20f, "Đang gửi toàn bộ danh sách phân đoạn tới Gemini AI (Batch JSON)...")
+                val batchResults = tryTranslateBatchGemini(segments, effectiveKey, videoTitle, videoCategory)
+                if (batchResults != null && batchResults.isNotEmpty()) {
+                    onProgress(0.85f, "Đã nhận kết quả dịch hàng loạt từ Gemini AI, đang hoàn thiện văn phong...")
+                    val resultMap = batchResults
+                    val polishedList = segments.map { seg ->
+                        val rawVi = resultMap[seg.id] ?: SHORT_PHRASES_DICT[seg.originalChinese.trim()] ?: ""
+                        val polishedVi = if (rawVi.isNotBlank()) {
+                            polishVietnameseDubbing(rawVi, seg.originalChinese)
+                        } else {
+                            fallbackDictionaryTranslate(seg.originalChinese)
+                        }
+                        val verifiedVi = verifyAndPreserveShortUtterances(seg.originalChinese, polishedVi)
+                        seg.copy(vietnameseText = sanitizeForTts(verifiedVi), isEdited = false)
                     }
-                    val verifiedVi = verifyAndPreserveShortUtterances(seg.originalChinese, polishedVi)
-                    seg.copy(vietnameseText = sanitizeForTts(verifiedVi), isEdited = false)
+                    onProgress(1.0f, "Hoàn tất dịch hàng loạt ${segments.size} câu thành công!")
+                    return@withContext polishedList
                 }
-                onProgress(1.0f, "Hoàn tất dịch hàng loạt ${segments.size} câu thành công!")
-                return@withContext polishedList
+            } catch (e: Exception) {
+                Log.w(TAG, "Batch Gemini translation failed: ${e.message}, falling back to GTX...")
             }
-        } catch (e: ApiKeyException) {
-            throw e
-        } catch (e: Exception) {
-            Log.w(TAG, "Batch Gemini translation failed: ${e.message}, falling back to sentence-by-sentence fallback...")
         }
 
-        // Dự phòng: Nếu batch request gặp sự cố (quota/mạng/format), dịch tuần tự có cơ chế backoff
-        onProgress(0.40f, "Chuyển sang cơ chế dịch dự phòng từng câu...")
+        // Tầng 2: Dịch tuần tự qua Google Neural Direct (Miễn phí 100%, không cần API Key, không giới hạn)
+        onProgress(0.20f, "Đang kết nối dịch thuật Google Neural tốc độ cao...")
         val fallbackList = mutableListOf<SubtitleSegment>()
         segments.forEachIndexed { i, seg ->
-            val pct = 0.40f + 0.55f * ((i + 1).toFloat() / segments.size.toFloat())
-            onProgress(pct, "Đang dịch câu [${i + 1}/${segments.size}]...")
+            val pct = 0.20f + 0.75f * ((i + 1).toFloat() / segments.size.toFloat())
+            onProgress(pct, "Đang dịch câu [${i + 1}/${segments.size}]: \"${seg.originalChinese.take(16)}...\"")
             val res = translateAccuratelyMultiPass(
                 chineseText = seg.originalChinese,
                 passCount = 2,
@@ -458,6 +530,7 @@ object TranslationService {
             )
             fallbackList.add(seg.copy(vietnameseText = res.vietnameseText, isEdited = false))
         }
+        onProgress(1.0f, "Hoàn tất dịch ${segments.size} câu thoại!")
         fallbackList
     }
 
@@ -467,7 +540,7 @@ object TranslationService {
         videoTitle: String,
         videoCategory: String
     ): Map<Long, String>? {
-        val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=$apiKey"
+        val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$apiKey"
 
         val inputJsonArray = JSONArray()
         segments.forEach { seg ->
@@ -518,8 +591,8 @@ object TranslationService {
         httpClient.newCall(request).execute().use { response ->
             if (response.code in 400..403) {
                 val errBody = response.body?.string() ?: ""
-                Log.e(TAG, "Gemini Batch API Key rejected: ${response.code} $errBody")
-                throw ApiKeyException("Lỗi kết nối API Key, vui lòng kiểm tra lại. (Mã lỗi: ${response.code})")
+                Log.w(TAG, "Gemini Batch API Key rejected or invalid: ${response.code} $errBody")
+                return null
             }
             if (!response.isSuccessful) return null
             val responseStr = response.body?.string() ?: return null
@@ -574,22 +647,69 @@ object TranslationService {
     }
 
     fun fallbackDictionaryTranslate(chinese: String): String {
+        val trimmed = chinese.trim()
         // Direct match
-        SHORT_PHRASES_DICT[chinese.trim()]?.let { return it }
+        SHORT_PHRASES_DICT[trimmed]?.let { return it }
 
-        var result = chinese
-        // Replace known words
+        var result = trimmed
+        // Replace known phrases and words
         EXPANDED_DICTIONARY.forEach { (cn, vn) ->
             if (result.contains(cn)) {
                 result = result.replace(cn, vn)
             }
         }
-        return if (result != chinese) result else "Đây là đoạn thoại tiếng Trung: $chinese"
+        if (result != trimmed) return result
+
+        // Character and common word level transliteration
+        val sb = StringBuilder()
+        var i = 0
+        while (i < trimmed.length) {
+            var matched = false
+            // Check 3-char word
+            if (i + 3 <= trimmed.length) {
+                val sub3 = trimmed.substring(i, i + 3)
+                COMMON_VOCAB_MAP[sub3]?.let {
+                    if (sb.isNotEmpty()) sb.append(" ")
+                    sb.append(it)
+                    i += 3
+                    matched = true
+                }
+            }
+            // Check 2-char word
+            if (!matched && i + 2 <= trimmed.length) {
+                val sub2 = trimmed.substring(i, i + 2)
+                COMMON_VOCAB_MAP[sub2]?.let {
+                    if (sb.isNotEmpty()) sb.append(" ")
+                    sb.append(it)
+                    i += 2
+                    matched = true
+                }
+            }
+            // Check 1-char
+            if (!matched) {
+                val ch = trimmed[i].toString()
+                val vn = COMMON_VOCAB_MAP[ch] ?: SINO_VIETNAMESE_MAP[ch]
+                if (vn != null) {
+                    if (sb.isNotEmpty()) sb.append(" ")
+                    sb.append(vn)
+                } else {
+                    sb.append(ch)
+                }
+                i += 1
+            }
+        }
+
+        val converted = sb.toString().trim()
+        return if (converted.isNotBlank() && converted != trimmed) {
+            converted.replace(Regex("\\s+([,!.?:;])"), "$1")
+        } else {
+            "Phân đoạn thoại: $trimmed"
+        }
     }
 
     // High-frequency short utterances (1-8 chars) ensuring ZERO skipped short segments
     private val SHORT_PHRASES_DICT = mapOf(
-        "哇！" to "Oa, thơm quá!",
+        "哇！" to "Oa!",
         "哇" to "Oa!",
         "哇塞" to "Trời ơi đỉnh quá!",
         "快看！" to "Mau nhìn này!",
@@ -627,7 +747,7 @@ object TranslationService {
         "好嘞" to "Được luôn nhé!",
         "好的" to "Dạ vâng được ạ!",
         "好" to "Được rồi!",
-        "来了！" to "Hàng về rồi đây!",
+        "来了！" to "Tới rồi đây!",
         "来了" to "Tới rồi đây!",
         "来咯" to "Đến đây nào!",
         "喂！" to "Alo!",
@@ -636,15 +756,15 @@ object TranslationService {
         "当然" to "Chắc chắn rồi!",
         "尴尬！" to "Ngại chín mặt!",
         "尴尬" to "Ngại ngùng ghê!",
-        "太香了！" to "Thơm nức mũi luôn!",
-        "太香了" to "Thơm phức luôn á!",
+        "太香了！" to "Thích quá đi!",
+        "太香了" to "Thơm quá!",
         "尝尝！" to "Ăn thử đi nào!",
         "尝尝" to "Thử miếng xem sao!",
         "好吃！" to "Ngon tuyệt cú mèo!",
         "太好吃了" to "Ngon xuất sắc luôn!",
         "赶紧试试！" to "Thử ngay đi nào!",
         "赶紧的" to "Nhanh tay lên nào!",
-        "太棒了" to "Tuyệt vời ông mặt trời!",
+        "太棒了" to "Tuyệt vời quá!",
         "厉害" to "Lợi hại thật sự!",
         "牛" to "Quá đỉnh luôn!",
         "安排" to "Triển khai ngay!",
@@ -703,6 +823,47 @@ object TranslationService {
         "老板" to "Ông chủ",
         "好吃" to "Ngon lắm",
         "真的" to "Thật sự"
+    )
+
+    private val COMMON_VOCAB_MAP = mapOf(
+        "欢迎" to "chào mừng", "来到" to "đến với", "今天" to "hôm nay", "明天" to "ngày mai",
+        "昨天" to "hôm qua", "我们" to "chúng mình", "你们" to "các bạn", "他们" to "họ",
+        "大家" to "cả nhà", "朋友" to "bạn bè", "分享" to "chia sẻ", "视频" to "video",
+        "喜欢" to "thích", "好看" to "đẹp", "很好" to "rất tốt", "非常" to "vô cùng",
+        "特别" to "đặc biệt", "超级" to "siêu", "怎么" to "làm sao", "什么" to "cái gì",
+        "为什么" to "tại sao", "这个" to "cái này", "那个" to "cái đó", "这里" to "ở đây",
+        "那里" to "ở đó", "可以" to "có thể", "不要" to "đừng", "没有" to "không có",
+        "如果" to "nếu như", "但是" to "nhưng mà", "因为" to "bởi vì", "所以" to "cho nên",
+        "感觉" to "cảm thấy", "觉得" to "nghĩ rằng", "手机" to "điện thoại", "体验" to "trải nghiệm",
+        "美食" to "món ngon", "吃饭" to "ăn cơm", "工作" to "công việc", "生活" to "cuộc sống",
+        "开始" to "bắt đầu", "结束" to "kết thúc", "一起" to "cùng nhau", "现在" to "bây giờ",
+        "马上" to "ngay lập tức", "已经" to "đã", "正在" to "đang", "想要" to "muốn",
+        "希望" to "hy vọng", "发现" to "phát hiện", "记得" to "nhớ", "关注" to "theo dõi",
+        "收藏" to "lưu lại", "转发" to "chia sẻ", "评论" to "bình luận", "回复" to "trả lời",
+        "介绍" to "giới thiệu", "准备" to "chuẩn bị", "简单" to "đơn giản", "容易" to "dễ dàng",
+        "麻烦" to "phiền phức", "问题" to "vấn đề", "方法" to "phương pháp", "技巧" to "mẹo nhỏ",
+        "精彩" to "đặc sắc", "有趣" to "thú vị", "开心" to "vui vẻ", "难过" to "buồn bã",
+        "漂亮" to "xinh xắn", "帅气" to "bảnh bao", "可爱" to "dễ thương", "厉害" to "lợi hại",
+        "聪明" to "thông minh", "努力" to "nỗ lực", "加油" to "cố lên", "恭喜" to "chúc mừng",
+        "谢谢" to "cảm ơn", "再见" to "hẹn gặp lại", "对不起" to "xin lỗi", "没关系" to "không sao"
+    )
+
+    private val SINO_VIETNAMESE_MAP = mapOf(
+        "我" to "tôi", "你" to "bạn", "他" to "anh ấy", "她" to "cô ấy", "它" to "nó",
+        "们" to "các", "的" to "của", "了" to "rồi", "是" to "là", "在" to "ở",
+        "有" to "có", "不" to "không", "这" to "này", "那" to "đó", "好" to "tốt",
+        "大" to "lớn", "小" to "nhỏ", "多" to "nhiều", "少" to "ít", "很" to "rất",
+        "太" to "quá", "都" to "đều", "也" to "cũng", "和" to "và", "跟" to "cùng",
+        "看" to "xem", "听" to "nghe", "说" to "nói", "做" to "làm", "买" to "mua",
+        "卖" to "bán", "吃" to "ăn", "喝" to "uống", "去" to "đi", "来" to "đến",
+        "想" to "nghĩ", "要" to "cần", "能" to "thể", "会" to "biết", "给" to "cho",
+        "让" to "để", "叫" to "kêu", "问" to "hỏi", "答" to "đáp", "笑" to "cười",
+        "哭" to "khóc", "走" to "đi", "跑" to "chạy", "进" to "vào", "出" to "ra",
+        "高" to "cao", "低" to "thấp", "长" to "dài", "短" to "ngắn", "快" to "nhanh",
+        "慢" to "chậm", "新" to "mới", "旧" to "cũ", "红" to "đỏ", "白" to "trắng",
+        "黑" to "đen", "美" to "đẹp", "真" to "thật", "假" to "giả", "对" to "đúng",
+        "错" to "sai", "人" to "người", "家" to "nhà", "天" to "ngày", "年" to "năm",
+        "月" to "tháng", "日" to "ngày", "点" to "điểm", "分" to "phút", "秒" to "giây"
     )
 }
 

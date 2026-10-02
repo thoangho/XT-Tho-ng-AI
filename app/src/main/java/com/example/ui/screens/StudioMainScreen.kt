@@ -500,6 +500,7 @@ fun StudioMainScreen(
                                     onConfirmSubtitles = { viewModel.confirmAndApproveAllSubtitles() },
                                     onGoToDubbingTab = { viewModel.selectTab(2) },
                                     onUpdateText = { id, text -> viewModel.updateSegmentText(id, text) },
+                                    onUpdateChineseText = { id, zh -> viewModel.updateSegmentChineseText(id, zh) },
                                     onUpdateTiming = { id, start, end -> viewModel.updateSegmentTiming(id, start, end) },
                                     onNudgeTiming = { id, dStart, dEnd -> viewModel.nudgeSegmentTiming(id, dStart, dEnd) },
                                     onToggleApproval = { id -> viewModel.toggleSegmentApproval(id) },

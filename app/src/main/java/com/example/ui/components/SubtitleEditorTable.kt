@@ -110,6 +110,7 @@ fun SubtitleEditorTable(
     onConfirmSubtitles: () -> Unit = {},
     onGoToDubbingTab: () -> Unit = {},
     onUpdateText: (Long, String) -> Unit,
+    onUpdateChineseText: (Long, String) -> Unit = { _, _ -> },
     onUpdateTiming: (Long, Long, Long) -> Unit = { _, _, _ -> },
     onNudgeTiming: (Long, Long, Long) -> Unit = { _, _, _ -> },
     onToggleApproval: (Long) -> Unit = {},
@@ -772,6 +773,7 @@ fun SubtitleEditorTable(
                     index = index + 1,
                     isActive = isActive,
                     onUpdateText = { onUpdateText(seg.id, it) },
+                    onUpdateChineseText = { onUpdateChineseText(seg.id, it) },
                     onUpdateTiming = { start, end -> onUpdateTiming(seg.id, start, end) },
                     onNudgeTiming = { dStart, dEnd -> onNudgeTiming(seg.id, dStart, dEnd) },
                     onToggleApproval = { onToggleApproval(seg.id) },
@@ -829,6 +831,7 @@ fun InteractiveSubtitleMappingCard(
     index: Int,
     isActive: Boolean,
     onUpdateText: (String) -> Unit,
+    onUpdateChineseText: (String) -> Unit = {},
     onUpdateTiming: (Long, Long) -> Unit,
     onNudgeTiming: (Long, Long) -> Unit,
     onToggleApproval: () -> Unit,
@@ -841,7 +844,9 @@ fun InteractiveSubtitleMappingCard(
 ) {
     val clipboardManager = LocalClipboardManager.current
     var isTimingExpanded by remember { mutableStateOf(false) }
+    var isEditingChinese by remember { mutableStateOf(false) }
     var localVietnameseText by remember(segment.vietnameseText) { mutableStateOf(segment.vietnameseText) }
+    var localChineseText by remember(segment.originalChinese) { mutableStateOf(segment.originalChinese) }
 
     // Reading speed safety calculation
     val durationSec = segment.durationMs / 1000f
@@ -1165,57 +1170,110 @@ fun InteractiveSubtitleMappingCard(
                 }
             }
 
-            // ROW 2: MAPPED SOURCE - ORIGINAL CHINESE TEXT
+            // ROW 2: MAPPED SOURCE - ORIGINAL CHINESE TEXT (EDITABLE)
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(8.dp),
                 color = Color.Black.copy(alpha = 0.45f),
-                border = androidx.compose.foundation.BorderStroke(0.6.dp, StudioBorder)
+                border = androidx.compose.foundation.BorderStroke(0.6.dp, if (isEditingChinese) StudioCyan else StudioBorder)
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Text(
-                                text = "🇨🇳 Tiếng Trung gốc:",
-                                color = Color.White.copy(alpha = 0.6f),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "(${segment.originalChinese.length} ký tự)",
-                                color = Color.White.copy(alpha = 0.4f),
-                                fontSize = 10.sp
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = segment.originalChinese,
-                            color = Color(0xFFFFEB3B), // Classic yellow Douyin subtitle color
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium
+                if (isEditingChinese) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = localChineseText,
+                            onValueChange = {
+                                localChineseText = it
+                                onUpdateChineseText(it)
+                            },
+                            label = { Text("🇨🇳 Chỉnh sửa câu thoại tiếng Trung gốc", color = Color(0xFFFFEB3B), fontSize = 11.sp) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("chinese_input_$index"),
+                            textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFFFFEB3B), fontSize = 13.sp),
+                            trailingIcon = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(
+                                        onClick = { isEditingChinese = false },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(Icons.Default.Check, contentDescription = "Lưu câu tiếng Trung", tint = StudioGreen, modifier = Modifier.size(16.dp))
+                                    }
+                                    IconButton(
+                                        onClick = onRetranslate,
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(Icons.Default.AutoAwesome, contentDescription = "Dịch câu này", tint = StudioCyan, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            }
                         )
                     }
-
-                    // Copy Chinese text button
-                    IconButton(
-                        onClick = { clipboardManager.setText(AnnotatedString(segment.originalChinese)) },
-                        modifier = Modifier.size(28.dp)
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.ContentCopy,
-                            contentDescription = "Sao chép tiếng Trung",
-                            tint = Color.White.copy(alpha = 0.5f),
-                            modifier = Modifier.size(15.dp)
-                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "🇨🇳 Tiếng Trung gốc:",
+                                    color = Color.White.copy(alpha = 0.6f),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "(${localChineseText.length} ký tự)",
+                                    color = Color.White.copy(alpha = 0.4f),
+                                    fontSize = 10.sp
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = localChineseText,
+                                color = Color(0xFFFFEB3B), // Classic yellow Douyin subtitle color
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            // Edit Chinese button
+                            IconButton(
+                                onClick = { isEditingChinese = true },
+                                modifier = Modifier.size(28.dp).testTag("edit_chinese_$index")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "Sửa tiếng Trung",
+                                    tint = StudioCyan,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
+
+                            // Copy Chinese text button
+                            IconButton(
+                                onClick = { clipboardManager.setText(AnnotatedString(localChineseText)) },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ContentCopy,
+                                    contentDescription = "Sao chép tiếng Trung",
+                                    tint = Color.White.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
