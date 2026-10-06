@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import com.example.data.network.ApiKeyException
+import com.example.data.network.ApiKeyManager
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
@@ -65,6 +66,9 @@ data class StudioUiState(
     val errorAlertTitle: String? = null,
     val errorAlertMessage: String? = null,
     val showApiKeyDialog: Boolean = false,
+    val isTestingApiKey: Boolean = false,
+    val apiKeyValidationMessage: String? = null,
+    val isApiKeyValid: Boolean? = null,
     val exportSuccessMessage: String? = null,
     val isSubtitlesConfirmed: Boolean = false,
     val isDubbingPlaying: Boolean = false,
@@ -88,7 +92,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private var lastSpokenSegmentId: Long? = null
 
     init {
-        val savedKey = prefs.getString("user_gemini_api_key", "") ?: ""
+        val savedKey = ApiKeyManager.getSavedApiKey(application)
         _uiState.update { it.copy(userApiKey = savedKey) }
 
         // Quan sát danh sách dự án từ Room DB nhưng KHÔNG tự động nạp activeProject khi khởi động
@@ -104,19 +108,149 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun testApiKey(key: String) {
+        val cleanKey = ApiKeyManager.sanitizeApiKey(key)
+        if (cleanKey.isBlank()) {
+            _uiState.update {
+                it.copy(
+                    isTestingApiKey = false,
+                    isApiKeyValid = false,
+                    apiKeyValidationMessage = "Vui lòng dán API Key trước khi kiểm tra."
+                )
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isTestingApiKey = true,
+                    isApiKeyValid = null,
+                    apiKeyValidationMessage = "Đang kiểm tra kết nối với máy chủ Google AI Studio..."
+                )
+            }
+            val result = ApiKeyManager.validateGeminiApiKey(cleanKey)
+            if (result.isSuccess) {
+                _uiState.update {
+                    it.copy(
+                        isTestingApiKey = false,
+                        isApiKeyValid = true,
+                        apiKeyValidationMessage = "✅ Kết nối Google AI Studio thành công! API Key hoạt động hoàn hảo."
+                    )
+                }
+            } else {
+                val errorMsg = result.exceptionOrNull()?.localizedMessage ?: "Xác thực thất bại"
+                _uiState.update {
+                    it.copy(
+                        isTestingApiKey = false,
+                        isApiKeyValid = false,
+                        apiKeyValidationMessage = "❌ $errorMsg"
+                    )
+                }
+            }
+        }
+    }
+
     fun saveApiKey(key: String) {
-        val trimmed = key.trim()
-        prefs.edit().putString("user_gemini_api_key", trimmed).apply()
-        _uiState.update { it.copy(userApiKey = trimmed, showApiKeyDialog = false) }
-        showNotice("Đã lưu API Key thành công!")
+        val cleanKey = ApiKeyManager.sanitizeApiKey(key)
+        if (cleanKey.isBlank()) {
+            ApiKeyManager.clearApiKey(getApplication())
+            _uiState.update {
+                it.copy(
+                    userApiKey = "",
+                    showApiKeyDialog = false,
+                    isTestingApiKey = false,
+                    apiKeyValidationMessage = null,
+                    isApiKeyValid = null
+                )
+            }
+            showNotice("Đã xoá API Key. Hệ thống chuyển sang chế độ Google Neural Direct miễn phí.")
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isTestingApiKey = true,
+                    isApiKeyValid = null,
+                    apiKeyValidationMessage = "Đang xác thực với máy chủ Google AI Studio..."
+                )
+            }
+            val validation = ApiKeyManager.validateGeminiApiKey(cleanKey)
+            if (validation.isSuccess) {
+                ApiKeyManager.saveApiKey(getApplication(), cleanKey)
+                _uiState.update {
+                    it.copy(
+                        userApiKey = cleanKey,
+                        showApiKeyDialog = false,
+                        isTestingApiKey = false,
+                        isApiKeyValid = true,
+                        apiKeyValidationMessage = null
+                    )
+                }
+                showNotice("✅ Đã kết nối và lưu API Key thành công! XThoáng AI (Gemini 2.5 Flash) đã sẵn sàng.")
+            } else {
+                val errorMsg = validation.exceptionOrNull()?.localizedMessage ?: "Lỗi xác thực API Key"
+                _uiState.update {
+                    it.copy(
+                        isTestingApiKey = false,
+                        isApiKeyValid = false,
+                        apiKeyValidationMessage = "❌ $errorMsg"
+                    )
+                }
+            }
+        }
+    }
+
+    fun saveApiKeyDirectlyWithoutValidation(key: String) {
+        val cleanKey = ApiKeyManager.sanitizeApiKey(key)
+        ApiKeyManager.saveApiKey(getApplication(), cleanKey)
+        _uiState.update {
+            it.copy(
+                userApiKey = cleanKey,
+                showApiKeyDialog = false,
+                isTestingApiKey = false,
+                apiKeyValidationMessage = null,
+                isApiKeyValid = null
+            )
+        }
+        showNotice("Đã lưu API Key.")
+    }
+
+    fun clearApiKey() {
+        ApiKeyManager.clearApiKey(getApplication())
+        _uiState.update {
+            it.copy(
+                userApiKey = "",
+                showApiKeyDialog = false,
+                isTestingApiKey = false,
+                apiKeyValidationMessage = null,
+                isApiKeyValid = null
+            )
+        }
+        showNotice("Đã xoá API Key. Hệ thống sử dụng Google Neural Direct miễn phí.")
     }
 
     fun openApiKeyDialog() {
-        _uiState.update { it.copy(showApiKeyDialog = true) }
+        _uiState.update {
+            it.copy(
+                showApiKeyDialog = true,
+                apiKeyValidationMessage = null,
+                isApiKeyValid = null,
+                isTestingApiKey = false
+            )
+        }
     }
 
     fun closeApiKeyDialog() {
-        _uiState.update { it.copy(showApiKeyDialog = false) }
+        _uiState.update {
+            it.copy(
+                showApiKeyDialog = false,
+                apiKeyValidationMessage = null,
+                isApiKeyValid = null,
+                isTestingApiKey = false
+            )
+        }
     }
 
     fun clearErrorAlert() {

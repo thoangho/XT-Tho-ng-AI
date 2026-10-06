@@ -39,6 +39,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -713,13 +714,13 @@ fun StudioMainScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Icon(Icons.Default.Key, contentDescription = null, tint = StudioCyan, modifier = Modifier.size(20.dp))
-                    Text("Cài đặt API Key", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 16.sp)
+                    Text("Cài đặt Gemini API Key", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 16.sp)
                 }
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "Vui lòng nhập Google Gemini API Key để kích hoạt tính năng dịch video ngữ cảnh và lồng tiếng tự động cho XThoáng AI.",
+                        text = "Nhập Google Gemini API Key để kích hoạt dịch ngữ cảnh cao cấp (Gemini 2.5 Flash). Nếu không nhập, ứng dụng vẫn hoạt động bình thường với Google Neural Direct (Miễn phí 100%).",
                         color = Color.White.copy(alpha = 0.8f),
                         fontSize = 12.sp,
                         lineHeight = 17.sp
@@ -727,9 +728,11 @@ fun StudioMainScreen(
                     OutlinedTextField(
                         value = tempApiKey,
                         onValueChange = { tempApiKey = it },
-                        placeholder = { Text("Dán Gemini API Key...", fontSize = 12.sp, color = Color.White.copy(alpha = 0.4f)) },
+                        placeholder = { Text("Dán API Key (AIzaSy...)", fontSize = 12.sp, color = Color.White.copy(alpha = 0.4f)) },
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("api_key_input"),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = Color.White,
                             unfocusedTextColor = Color.White,
@@ -737,18 +740,89 @@ fun StudioMainScreen(
                             unfocusedBorderColor = StudioBorder
                         )
                     )
+
+                    // Trạng thái kiểm tra kết nối
+                    if (state.isTestingApiKey) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(StudioBgDark.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                                .padding(8.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = StudioCyan,
+                                strokeWidth = 2.dp
+                            )
+                            Text(
+                                text = state.apiKeyValidationMessage ?: "Đang kiểm tra kết nối với Google AI Studio...",
+                                color = StudioCyan,
+                                fontSize = 11.sp
+                            )
+                        }
+                    } else if (state.apiKeyValidationMessage != null) {
+                        val isOk = state.isApiKeyValid == true
+                        val bg = if (isOk) StudioGreen.copy(alpha = 0.15f) else Color(0xFFFF5252).copy(alpha = 0.15f)
+                        val txtColor = if (isOk) StudioGreen else Color(0xFFFF8A80)
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = bg,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = state.apiKeyValidationMessage ?: "",
+                                color = txtColor,
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(8.dp),
+                                lineHeight = 15.sp
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedButton(
+                            onClick = { viewModel.testApiKey(tempApiKey) },
+                            enabled = !state.isTestingApiKey && tempApiKey.isNotBlank(),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.testTag("test_api_key_button")
+                        ) {
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp), tint = StudioCyan)
+                            Spacer(Modifier.width(4.dp))
+                            Text("Test kết nối", fontSize = 11.sp, color = StudioCyan)
+                        }
+
+                        if (state.userApiKey.isNotBlank()) {
+                            TextButton(
+                                onClick = {
+                                    tempApiKey = ""
+                                    viewModel.clearApiKey()
+                                },
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("Xoá Key", fontSize = 11.sp, color = Color(0xFFFF8A80))
+                            }
+                        }
+                    }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = { viewModel.saveApiKey(tempApiKey) },
+                    enabled = !state.isTestingApiKey,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = StudioCyan,
                         contentColor = StudioBgDark
                     ),
-                    shape = RoundedCornerShape(8.dp)
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.testTag("save_api_key_button")
                 ) {
-                    Text("Lưu API Key", fontWeight = FontWeight.Bold)
+                    Text(if (state.isTestingApiKey) "Đang lưu..." else "Lưu & Kích hoạt", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
