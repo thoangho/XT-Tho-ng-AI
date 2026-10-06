@@ -495,7 +495,8 @@ object TranslationService {
             val content = firstCandidate.optJSONObject("content") ?: return null
             val parts = content.optJSONArray("parts") ?: return null
             val part = parts.optJSONObject(0) ?: return null
-            return part.optString("text")?.trim()
+            val rawText = part.optString("text")?.trim().orEmpty()
+            return com.example.data.repository.TranslationRepository.sanitizeTranslatedSubtitles(rawText)
         }
     }
 
@@ -678,7 +679,8 @@ object TranslationService {
                 val id = obj.optLong("id", -1L)
                 val vi = obj.optString("vi", "").trim()
                 if (id != -1L && vi.isNotBlank()) {
-                    result[id] = vi
+                    val sanitizedVi = com.example.data.repository.TranslationRepository.sanitizeTranslatedSubtitles(vi)
+                    result[id] = sanitizedVi
                 }
             }
             return result

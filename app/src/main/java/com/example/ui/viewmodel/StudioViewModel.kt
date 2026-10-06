@@ -16,6 +16,7 @@ import com.example.data.model.SubtitleSegment
 import com.example.data.model.VideoProject
 import com.example.data.model.VoiceOption
 import com.example.data.network.TranslationService
+import com.example.data.repository.TranslationRepository
 import com.example.data.subtitle.SubtitleFileService
 import com.example.data.tts.VoiceDubbingService
 import com.example.data.video.FFmpegOptions
@@ -621,12 +622,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     }
                 }
 
+                // Làm sạch phụ đề trùng lặp và template loops qua TranslationRepository
+                val cleanedList = TranslationRepository.cleanSubtitleSegments(updatedList)
+
                 // Cập nhật Database
-                updatedList.forEach { subtitleDao.updateSubtitle(it) }
+                cleanedList.forEach { subtitleDao.updateSubtitle(it) }
 
                 _uiState.update {
                     it.copy(
-                        segments = updatedList,
+                        segments = cleanedList,
                         isRetranslatingAll = false,
                         retranslateProgress = 1.0f,
                         retranslateStatusMessage = "Hoàn tất dịch chuẩn 100%!"
@@ -1112,22 +1116,25 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     }
                 }
 
-                updatedSegments.forEachIndexed { i, seg ->
-                    addLog("  [${i + 1}/${updatedSegments.size}]: ${seg.vietnameseText}")
+                // Làm sạch phụ đề trùng lặp và template loops qua TranslationRepository
+                val cleanedSegments = TranslationRepository.cleanSubtitleSegments(updatedSegments)
+
+                cleanedSegments.forEachIndexed { i, seg ->
+                    addLog("  [${i + 1}/${cleanedSegments.size}]: ${seg.vietnameseText}")
                 }
 
                 // Save to Room DB
                 subtitleDao.deleteSubtitlesForProject(project.id)
-                subtitleDao.insertSubtitles(updatedSegments)
+                subtitleDao.insertSubtitles(cleanedSegments)
 
                 // Tự động xuất lưu tệp .SRT và .TXT vào máy ngay sau khi dịch xong phụ đề
                 val autoSrtFile = try {
-                    VideoExportService.exportSrtFile(getApplication(), project, updatedSegments)
+                    VideoExportService.exportSrtFile(getApplication(), project, cleanedSegments)
                 } catch (e: Exception) {
                     null
                 }
                 val autoTxtFile = try {
-                    VideoExportService.exportTranscriptFile(getApplication(), project, updatedSegments)
+                    VideoExportService.exportTranscriptFile(getApplication(), project, cleanedSegments)
                 } catch (e: Exception) {
                     null
                 }
@@ -1141,7 +1148,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         processingStage = 2,
                         processingProgress = 1.0f,
                         processingStageTitle = "Hoàn tất bóc tách & dịch phụ đề!",
-                        segments = updatedSegments,
+                        segments = cleanedSegments,
                         lastExportedSrt = autoSrtFile,
                         lastExportedTxt = autoTxtFile,
                         translationSuccessful = true,

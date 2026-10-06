@@ -1503,4 +1503,19 @@ object VideoExportService {
         segments: List<SubtitleSegment>,
         onProgress: (step: Int, percentage: Float, message: String) -> Unit
     ): File = renderVideoWithFFmpeg(context, project, segments, FFmpegOptions(), onProgress)
+
+    /**
+     * Xuất video bằng quy trình 3 bước của VideoExportEngine (FFmpegKit)
+     */
+    suspend fun exportWithVideoExportEngine(
+        context: Context,
+        inputVideo: File,
+        subtitleFile: File,
+        dubbedAudioFile: File,
+        outputFile: File,
+        onStepChange: (String) -> Unit = {}
+    ): Boolean {
+        val engine = VideoExportEngine(context)
+        return engine.executeThreeStepExport(inputVideo, subtitleFile, dubbedAudioFile, outputFile, onStepChange)
+    }
 }
