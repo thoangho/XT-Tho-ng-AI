@@ -32,6 +32,8 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import com.example.data.network.ApiKeyException
 import com.example.data.network.ApiKeyManager
+import com.example.util.BatteryHelper
+import com.example.util.BatteryInfo
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
@@ -77,7 +79,11 @@ data class StudioUiState(
     val dubbingGenerationProgress: Float = 0f,
     val dubbingStatusMessage: String = "",
     val lastGeneratedAudioFile: File? = null,
-    val hasVideoLoaded: Boolean = false
+    val hasVideoLoaded: Boolean = false,
+    val batteryInfo: BatteryInfo = BatteryInfo(),
+    val showLowBatteryExportWarningDialog: Boolean = false,
+    val pendingExportDirect: Boolean = false,
+    val isBatteryBannerDismissed: Boolean = false
 )
 
 class StudioViewModel(application: Application) : AndroidViewModel(application) {
@@ -107,6 +113,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
         dubbingService.onDuckingChange = { isSpeaking ->
             _uiState.update { it.copy(isSpeakingPreview = isSpeaking) }
+        }
+
+        // Quan sát mức pin và nguồn sạc theo thời gian thực để bảo vệ render
+        viewModelScope.launch {
+            BatteryHelper.observeBattery(application).collect { battery ->
+                _uiState.update { it.copy(batteryInfo = battery) }
+            }
         }
     }
 
@@ -1381,9 +1394,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     /**
      * Module 4: Unified Export & Auto-Cleanup
      * Supports both full dubbed/subtitled video export and direct export without translation/subtitles if requested.
-     * Incorporates 5-minute timeout protection to ensure process safety.
+     * Incorporates battery safety protection and 5-minute timeout protection.
      */
-    fun startExportAndCleanup(directExport: Boolean = false) {
+    fun startExportAndCleanup(directExport: Boolean = false, bypassBatteryCheck: Boolean = false) {
         val project = _uiState.value.activeProject
         if (project == null) {
             _uiState.update {
@@ -1393,6 +1406,21 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 )
             }
             return
+        }
+
+        // Cơ chế bảo vệ pin: Kiểm tra dung lượng pin trước tác vụ render nặng
+        if (!bypassBatteryCheck) {
+            val currentBattery = BatteryHelper.getBatteryInfo(getApplication())
+            if (currentBattery.isLowBattery) {
+                _uiState.update {
+                    it.copy(
+                        batteryInfo = currentBattery,
+                        showLowBatteryExportWarningDialog = true,
+                        pendingExportDirect = directExport
+                    )
+                }
+                return
+            }
         }
 
         val segments = if (directExport) emptyList() else _uiState.value.segments
@@ -1568,6 +1596,37 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     fun dismissProcessingDialog() {
         _uiState.update { it.copy(isProcessing = false) }
+    }
+
+    /**
+     * Xác nhận tiếp tục xuất video bất chấp cảnh báo pin yếu
+     */
+    fun confirmExportDespiteLowBattery() {
+        val direct = _uiState.value.pendingExportDirect
+        _uiState.update { it.copy(showLowBatteryExportWarningDialog = false) }
+        startExportAndCleanup(directExport = direct, bypassBatteryCheck = true)
+    }
+
+    /**
+     * Đóng hộp thoại cảnh báo pin yếu
+     */
+    fun dismissLowBatteryDialog() {
+        _uiState.update { it.copy(showLowBatteryExportWarningDialog = false) }
+    }
+
+    /**
+     * Tắt banner cảnh báo pin yếu trên màn hình chính
+     */
+    fun dismissBatteryBanner() {
+        _uiState.update { it.copy(isBatteryBannerDismissed = true) }
+    }
+
+    /**
+     * Làm mới thông tin pin tức thời
+     */
+    fun refreshBatteryStatus() {
+        val current = BatteryHelper.getBatteryInfo(getApplication())
+        _uiState.update { it.copy(batteryInfo = current) }
     }
 
     override fun onCleared() {

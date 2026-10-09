@@ -19,6 +19,13 @@ class ExportActivity : ComponentActivity() {
     }
 
     /**
+     * Kiểm tra an toàn pin trước khi bắt đầu Render Video dài
+     */
+    fun checkBatterySafety(): com.example.util.BatteryInfo {
+        return com.example.util.BatteryHelper.getBatteryInfo(this)
+    }
+
+    /**
      * Kích hoạt khi bắt đầu Render Video:
      * 1. Giữ màn hình luôn sáng (FLAG_KEEP_SCREEN_ON)
      * 2. Vô hiệu hóa tương tác chạm trên toàn màn hình (FLAG_NOT_TOUCHABLE)

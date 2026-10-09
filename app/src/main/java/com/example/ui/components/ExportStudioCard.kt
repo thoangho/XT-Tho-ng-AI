@@ -75,6 +75,7 @@ fun ExportStudioCard(
     onRunFullPipeline: () -> Unit,
     onExportSrt: () -> Unit,
     onExportTranscript: () -> Unit,
+    batteryInfo: com.example.util.BatteryInfo = com.example.util.BatteryInfo(),
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -96,7 +97,8 @@ fun ExportStudioCard(
             onUpdateFFmpegOptions = onUpdateFFmpegOptions,
             onTriggerFFmpegRender = onTriggerFFmpegRender,
             onDownloadFile = onDownloadFile,
-            onOpenFile = onOpenFile
+            onOpenFile = onOpenFile,
+            batteryInfo = batteryInfo
         )
 
         // 2. ADDITIONAL UTILITIES & FULL PIPELINE CARD

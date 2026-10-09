@@ -62,7 +62,8 @@ fun ProcessingProgressDialog(
     onDismiss: () -> Unit,
     title: String = "Tiến trình Dịch Phụ Đề AI (Độc lập)",
     subtitle: String = "Bóc tách & Dịch thuật -> Tự động lưu .SRT/.TXT",
-    totalStages: Int = 2
+    totalStages: Int = 2,
+    batteryInfo: com.example.util.BatteryInfo? = null
 ) {
     val listState = rememberLazyListState()
 
@@ -121,9 +122,37 @@ fun ProcessingProgressDialog(
                         }
                     }
 
-                    if (progress >= 1.0f) {
-                        IconButton(onClick = onDismiss) {
-                            Icon(imageVector = Icons.Default.Close, contentDescription = "Đóng", tint = Color.White)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (batteryInfo != null) {
+                            BatteryIndicatorBadge(batteryInfo = batteryInfo)
+                        }
+                        if (progress >= 1.0f) {
+                            IconButton(onClick = onDismiss) {
+                                Icon(imageVector = Icons.Default.Close, contentDescription = "Đóng", tint = Color.White)
+                            }
+                        }
+                    }
+                }
+
+                // Low Battery Alert Row during long AI task
+                if (batteryInfo?.isLowBattery == true) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF2A150A),
+                        border = androidx.compose.foundation.BorderStroke(0.8.dp, StudioAmber)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text("⚡", fontSize = 12.sp)
+                            Text(
+                                text = "Pin thấp (${batteryInfo.level}%). Vui lòng cắm sạc để duy trì tiến trình không bị gián đoạn!",
+                                color = StudioAmber,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
+                            )
                         }
                     }
                 }

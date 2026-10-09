@@ -31,6 +31,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.BatteryAlert
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
@@ -76,6 +77,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.VideoProject
 import com.example.data.video.FFmpegOptions
+import com.example.util.BatteryInfo
 import com.example.ui.theme.StudioAmber
 import com.example.ui.theme.StudioBgDark
 import com.example.ui.theme.StudioBorder
@@ -108,6 +110,7 @@ fun FinalExportButton(
     onTriggerFFmpegRender: (FFmpegOptions) -> Unit,
     onDownloadFile: (File, String) -> Unit,
     onOpenFile: (File, String) -> Unit,
+    batteryInfo: BatteryInfo = BatteryInfo(),
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -294,6 +297,45 @@ fun FinalExportButton(
             }
 
             // EXPORT INSTRUCTION NOTICE (Consolidated Single Export Button UX)
+            // Low Battery Warning for Video Rendering
+            if (batteryInfo.isLowBattery) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFF2B1F0B),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, StudioAmber),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("export_battery_warning")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.BatteryAlert,
+                            contentDescription = null,
+                            tint = StudioAmber,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Column {
+                            Text(
+                                text = "⚠️ Cảnh báo mức pin (${batteryInfo.level}% - Không sạc)",
+                                color = StudioAmber,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Quá trình render video cần nhiều tài nguyên CPU/GPU. Vui lòng kết nối bộ sạc để tránh sập nguồn làm hỏng tệp video.",
+                                color = Color.White.copy(alpha = 0.82f),
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp
+                            )
+                        }
+                    }
+                }
+            }
+
             if (!isRendering) {
                 Surface(
                     modifier = Modifier

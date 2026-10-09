@@ -78,6 +78,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.AspectRatio
 import com.example.data.model.SampleVideoRepository
+import com.example.ui.components.BatteryIndicatorBadge
+import com.example.ui.components.LowBatteryWarningBanner
+import com.example.ui.components.LowBatteryExportWarningDialog
 import com.example.ui.components.ExportStudioCard
 import com.example.ui.components.MaskControlsCard
 import com.example.ui.components.ProcessingProgressDialog
@@ -188,6 +191,14 @@ fun StudioMainScreen(
                     }
                 },
                 actions = {
+                    // Huy hiệu hiển thị mức pin và trạng thái sạc
+                    BatteryIndicatorBadge(
+                        batteryInfo = state.batteryInfo,
+                        onClick = { viewModel.refreshBatteryStatus() }
+                    )
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
                     // API Key Setting Icon Button
                     IconButton(
                         onClick = { viewModel.openApiKeyDialog() },
@@ -310,6 +321,14 @@ fun StudioMainScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            // Hiển thị Banner cảnh báo pin yếu để ngăn chặn lỗi khi render video dài
+            if (!state.isBatteryBannerDismissed && state.batteryInfo.isLowBattery) {
+                LowBatteryWarningBanner(
+                    batteryInfo = state.batteryInfo,
+                    onDismiss = { viewModel.dismissBatteryBanner() }
+                )
+            }
+
             val project = state.activeProject
 
             if (project != null) {
@@ -574,7 +593,8 @@ fun StudioMainScreen(
                                     onOpenFile = { file, mime -> viewModel.openExportedFile(file, mime) },
                                     onRunFullPipeline = { viewModel.runFullPipeline() },
                                     onExportSrt = { viewModel.exportSrtOnly() },
-                                    onExportTranscript = { viewModel.exportTranscriptOnly() }
+                                    onExportTranscript = { viewModel.exportTranscriptOnly() },
+                                    batteryInfo = state.batteryInfo
                                 )
                             }
                         }
@@ -929,7 +949,8 @@ fun StudioMainScreen(
             stageTitle = state.processingStageTitle,
             progress = state.processingProgress,
             logs = state.processingLogs,
-            onDismiss = { viewModel.dismissProcessingDialog() }
+            onDismiss = { viewModel.dismissProcessingDialog() },
+            batteryInfo = state.batteryInfo
         )
     }
 
@@ -953,6 +974,15 @@ fun StudioMainScreen(
             onCreateManualProject = { title, dur, isVert -> viewModel.createManualProject(title, dur, isVert) },
             onDeleteProject = { viewModel.deleteProject(it) },
             onDismiss = { showSamplePicker = false }
+        )
+    }
+
+    // Modal Hộp thoại Cảnh báo Pin yếu trước khi bắt đầu Render Video (Bảo vệ render video dài)
+    if (state.showLowBatteryExportWarningDialog) {
+        LowBatteryExportWarningDialog(
+            batteryInfo = state.batteryInfo,
+            onConfirmExport = { viewModel.confirmExportDespiteLowBattery() },
+            onDismiss = { viewModel.dismissLowBatteryDialog() }
         )
     }
 }
