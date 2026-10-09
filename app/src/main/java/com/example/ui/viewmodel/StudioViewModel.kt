@@ -97,6 +97,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val _uiState = MutableStateFlow(StudioUiState())
     val uiState: StateFlow<StudioUiState> = _uiState.asStateFlow()
 
+    private var renderJob: Job? = null
     private var playbackJob: Job? = null
     private var lastSpokenSegmentId: Long? = null
 
@@ -1468,7 +1469,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
 
-        viewModelScope.launch {
+        renderJob?.cancel()
+        renderJob = viewModelScope.launch {
             _uiState.update {
                 it.copy(
                     isRenderingFFmpeg = true,
@@ -1478,33 +1480,20 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             }
 
             try {
-                // Timeout safety mechanism: 5 minutes max (300,000ms)
-                val exportedVideo = withTimeoutOrNull(300_000L) {
-                    VideoExportService.renderVideoWithFFmpeg(
-                        context = getApplication(),
-                        project = project,
-                        segments = segments,
-                        options = _uiState.value.ffmpegOptions,
-                        voiceDubbingService = if (directExport) null else dubbingService
-                    ) { step, pct, msg ->
-                        _uiState.update {
-                            it.copy(
-                                ffmpegRenderProgress = pct,
-                                ffmpegStatusMessage = msg
-                            )
-                        }
-                    }
-                }
-
-                if (exportedVideo == null) {
+                // TIẾN TRÌNH RENDER CHẠY LIÊN TỤC KHÔNG GIỚI HẠN THỜI GIAN (TIMEOUT REMOVED)
+                val exportedVideo = VideoExportService.renderVideoWithFFmpeg(
+                    context = getApplication(),
+                    project = project,
+                    segments = segments,
+                    options = _uiState.value.ffmpegOptions,
+                    voiceDubbingService = if (directExport) null else dubbingService
+                ) { step, pct, msg ->
                     _uiState.update {
                         it.copy(
-                            isRenderingFFmpeg = false,
-                            errorAlertTitle = "Quá thời gian xuất video",
-                            errorAlertMessage = "Tiến trình xuất video đã vượt quá thời gian cho phép (5 phút). Hệ thống đã tự động ngắt an toàn. Vui lòng thử lại với Preset Ultrafast."
+                            ffmpegRenderProgress = pct,
+                            ffmpegStatusMessage = msg
                         )
                     }
-                    return@launch
                 }
 
                 val successMsg = if (directExport) {
@@ -1522,6 +1511,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         lastDownloadedFileName = exportedVideo.name
                     )
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                _uiState.update {
+                    it.copy(
+                        isRenderingFFmpeg = false,
+                        ffmpegRenderProgress = 0f,
+                        ffmpegStatusMessage = ""
+                    )
+                }
+                showNotice("Đã hủy tiến trình xuất video theo yêu cầu.")
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
@@ -1532,6 +1530,22 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 }
             }
         }
+    }
+
+    /**
+     * Hủy bỏ tiến trình render video FFmpeg đang chạy
+     */
+    fun cancelFFmpegRendering() {
+        renderJob?.cancel()
+        renderJob = null
+        _uiState.update {
+            it.copy(
+                isRenderingFFmpeg = false,
+                ffmpegRenderProgress = 0f,
+                ffmpegStatusMessage = ""
+            )
+        }
+        showNotice("Đã hủy xuất video và mở lại thao tác giao diện.")
     }
 
     fun startDirectVideoExport() {

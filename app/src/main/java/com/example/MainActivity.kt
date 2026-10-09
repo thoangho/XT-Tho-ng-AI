@@ -1,6 +1,7 @@
 package com.example
 
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -64,6 +65,30 @@ class MainActivity : ComponentActivity() {
         } catch (e: Exception) {
             val webIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(fbUrl))
             startActivity(webIntent)
+        }
+    }
+
+    /**
+     * Kích hoạt Chế độ Bảo vệ Render Video:
+     * 1. Giữ màn hình luôn sáng (FLAG_KEEP_SCREEN_ON)
+     * 2. Vô hiệu hóa thao tác chạm trên Activity (FLAG_NOT_TOUCHABLE)
+     */
+    fun enableRenderProtectionMode() {
+        runOnUiThread {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            window.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE)
+        }
+    }
+
+    /**
+     * Gỡ bỏ Chế độ Bảo vệ Render Video:
+     * 1. Tắt giữ sáng màn hình
+     * 2. Mở lại tương tác chạm bình thường
+     */
+    fun disableRenderProtectionMode() {
+        runOnUiThread {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            window.clearFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE)
         }
     }
 }

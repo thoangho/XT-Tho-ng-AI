@@ -82,6 +82,7 @@ import com.example.ui.components.BatteryIndicatorBadge
 import com.example.ui.components.LowBatteryWarningBanner
 import com.example.ui.components.LowBatteryExportWarningDialog
 import com.example.ui.components.ExportStudioCard
+import com.example.ui.components.FFmpegRenderOverlayDialog
 import com.example.ui.components.MaskControlsCard
 import com.example.ui.components.ProcessingProgressDialog
 import com.example.ui.components.SampleVideoPickerSheet
@@ -984,6 +985,16 @@ fun StudioMainScreen(
             batteryInfo = state.batteryInfo,
             onConfirmExport = { viewModel.confirmExportDespiteLowBattery() },
             onDismiss = { viewModel.dismissLowBatteryDialog() }
+        )
+    }
+
+    // Modal Overlay Khóa tương tác toàn màn hình & Giữ sáng màn hình khi Render FFmpeg (Timeout Removed)
+    if (state.isRenderingFFmpeg) {
+        FFmpegRenderOverlayDialog(
+            progress = state.ffmpegRenderProgress,
+            statusMessage = state.ffmpegStatusMessage,
+            onCancel = { viewModel.cancelFFmpegRendering() },
+            batteryInfo = state.batteryInfo
         )
     }
 }

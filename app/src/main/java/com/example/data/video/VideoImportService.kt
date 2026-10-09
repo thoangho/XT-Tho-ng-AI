@@ -225,14 +225,20 @@ object VideoImportService {
                         val pPlay = Pattern.compile("play_addr.*?url_list.*?(https?://[^\"'\\s]+)")
                         val mPlay = pPlay.matcher(html)
                         if (mPlay.find()) {
-                            val found = mPlay.group(1).replace("\\u002F", "/").replace("playwm", "play")
-                            return@withContext ResolvedMediaInfo(directVideoUrl = found)
+                            val rawPlay = mPlay.group(1)
+                            if (!rawPlay.isNullOrBlank()) {
+                                val found = rawPlay.replace("\\u002F", "/").replace("playwm", "play")
+                                return@withContext ResolvedMediaInfo(directVideoUrl = found)
+                            }
                         }
 
                         val pMp4 = Pattern.compile("src=[\"'](https?://[^\"'\\s]+\\.mp4[^\"'\\s]*)[\"']")
                         val mMp4 = pMp4.matcher(html)
                         if (mMp4.find()) {
-                            return@withContext ResolvedMediaInfo(directVideoUrl = mMp4.group(1))
+                            val direct = mMp4.group(1)
+                            if (!direct.isNullOrBlank()) {
+                                return@withContext ResolvedMediaInfo(directVideoUrl = direct)
+                            }
                         }
                     }
                 }
