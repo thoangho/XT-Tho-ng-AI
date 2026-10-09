@@ -17,6 +17,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // 1. Khởi tạo ban đầu: Chưa có video đầu vào -> Ẩn hoàn toàn 2 nút 'Dịch Phụ Đề' & 'Xuất video'
+        updateActionButtonVisibility(hasVideo = false)
+
         setContent {
             MyApplicationTheme {
                 StudioMainScreen(
@@ -24,6 +28,42 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize()
                 )
             }
+        }
+    }
+
+    /**
+     * Quản lý trạng thái UI: Ẩn/Hiện 2 nút hành động (Dịch Phụ Đề, Xuất video)
+     * - hasVideo = false: Ẩn hoàn toàn (tương đương GONE)
+     * - hasVideo = true: Hiển thị lại (tương đương VISIBLE)
+     */
+    fun updateActionButtonVisibility(hasVideo: Boolean) {
+        studioViewModel.updateActionButtonVisibility(hasVideo)
+    }
+
+    /**
+     * Được kích hoạt sau khi chọn hoặc nhận kết quả video từ Picker / Storage
+     */
+    fun onVideoSelected(videoUri: android.net.Uri) {
+        // Cập nhật trạng thái hiển thị 2 nút hành động khi đã có video
+        updateActionButtonVisibility(hasVideo = true)
+        studioViewModel.importCustomVideo(videoUri, this)
+    }
+
+    /**
+     * Mở trực tiếp trang Facebook Admin:
+     * - Ưu tiên mở bằng ứng dụng Facebook nếu đã cài (com.facebook.katana)
+     * - Tự động fallback sang trình duyệt web nếu chưa cài Facebook
+     */
+    fun contactAdminFacebook() {
+        val fbUrl = "https://www.facebook.com/share/19o6cDY1cf/"
+        try {
+            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(fbUrl)).apply {
+                setPackage("com.facebook.katana")
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            val webIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(fbUrl))
+            startActivity(webIntent)
         }
     }
 }

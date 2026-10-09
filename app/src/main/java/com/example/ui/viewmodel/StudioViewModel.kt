@@ -76,7 +76,8 @@ data class StudioUiState(
     val isDubbingGenerating: Boolean = false,
     val dubbingGenerationProgress: Float = 0f,
     val dubbingStatusMessage: String = "",
-    val lastGeneratedAudioFile: File? = null
+    val lastGeneratedAudioFile: File? = null,
+    val hasVideoLoaded: Boolean = false
 )
 
 class StudioViewModel(application: Application) : AndroidViewModel(application) {
@@ -262,6 +263,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update { it.copy(exportSuccessMessage = null) }
     }
 
+    /**
+     * Quản lý trạng thái hiển thị của các nút hành động (Dịch Phụ Đề, Xuất video)
+     * - false: Ẩn hoàn toàn (GONE) khi chưa chọn/nạp video
+     * - true: Hiển thị lại (VISIBLE) khi đã tải hoặc chọn video thành công
+     */
+    fun updateActionButtonVisibility(hasVideo: Boolean) {
+        _uiState.update { it.copy(hasVideoLoaded = hasVideo) }
+    }
+
     fun selectTab(index: Int) {
         _uiState.update { it.copy(selectedTab = index) }
     }
@@ -272,6 +282,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update {
             it.copy(
                 activeProject = null,
+                hasVideoLoaded = false,
                 segments = emptyList(),
                 currentPlaybackTimeMs = 0L,
                 isPlaying = false,
@@ -293,6 +304,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             _uiState.update {
                 it.copy(
                     activeProject = project,
+                    hasVideoLoaded = true,
                     segments = emptyList(),
                     translationSuccessful = false,
                     isSubtitlesConfirmed = false,
@@ -315,6 +327,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 _uiState.update {
                     it.copy(
                         activeProject = project,
+                        hasVideoLoaded = true,
                         segments = segments,
                         translationSuccessful = segments.isNotEmpty(),
                         isSubtitlesConfirmed = allApproved,
@@ -355,6 +368,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 _uiState.update {
                     it.copy(
                         activeProject = result.project,
+                        hasVideoLoaded = true,
                         segments = result.segments,
                         currentPlaybackTimeMs = 0,
                         isPlaying = false,
@@ -399,6 +413,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 _uiState.update {
                     it.copy(
                         activeProject = result.project,
+                        hasVideoLoaded = true,
                         segments = result.segments,
                         currentPlaybackTimeMs = 0,
                         isPlaying = false,
@@ -424,6 +439,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             _uiState.update {
                 it.copy(
                     activeProject = result.project,
+                    hasVideoLoaded = true,
                     segments = result.segments,
                     currentPlaybackTimeMs = 0,
                     isPlaying = false

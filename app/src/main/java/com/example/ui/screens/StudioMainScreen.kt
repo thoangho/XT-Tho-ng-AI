@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -234,62 +235,68 @@ fun StudioMainScreen(
                     }
                     */
 
-                    // Core Translation Button (Whisper + Gemini AI with error check)
-                    Button(
-                        onClick = {
-                            if (state.activeProject == null) {
-                                viewModel.showNotice("Vui lòng chọn hoặc nạp video trước khi chạy dịch thuật!")
-                            } else {
-                                viewModel.runSubtitleTranslationOnly()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = StudioPurple,
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                        modifier = Modifier
-                            .height(32.dp)
-                            .padding(end = 3.dp)
-                            .testTag("top_run_pipeline_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = null,
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Text("Dịch Phụ Đề", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
-                    }
+                    // Hiển thị 2 nút 'Dịch Phụ Đề' và 'Xuất video' CHỈ KHI đã nạp/chọn video thành công
+                    // Nếu CHƯA có video (trạng thái mặc định khi vừa mở app): Ẩn hoàn toàn (visibility = GONE)
+                    val hasVideo = state.hasVideoLoaded || state.activeProject != null
 
-                    // SINGLE UNIFIED EXPORT BUTTON AT TOP-RIGHT CORNER (Module 4 Requirement)
-                    Button(
-                        onClick = {
-                            if (state.activeProject == null) {
-                                viewModel.showNotice("Vui lòng chọn hoặc nạp video trước khi xuất video!")
-                            } else {
-                                viewModel.startExportAndCleanup()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = StudioGreen,
-                            contentColor = StudioBgDark
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        modifier = Modifier
-                            .height(32.dp)
-                            .padding(end = 4.dp)
-                            .testTag("top_single_export_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.FileDownload,
-                            contentDescription = "Xuất video",
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text("Xuất video", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                    if (hasVideo) {
+                        // Core Translation Button (Whisper + Gemini AI with error check)
+                        Button(
+                            onClick = {
+                                if (state.activeProject == null) {
+                                    viewModel.showNotice("Vui lòng chọn hoặc nạp video trước khi chạy dịch thuật!")
+                                } else {
+                                    viewModel.runSubtitleTranslationOnly()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = StudioPurple,
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                            modifier = Modifier
+                                .height(32.dp)
+                                .padding(end = 3.dp)
+                                .testTag("top_run_pipeline_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = null,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text("Dịch Phụ Đề", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                        }
+
+                        // SINGLE UNIFIED EXPORT BUTTON AT TOP-RIGHT CORNER (Module 4 Requirement)
+                        Button(
+                            onClick = {
+                                if (state.activeProject == null) {
+                                    viewModel.showNotice("Vui lòng chọn hoặc nạp video trước khi xuất video!")
+                                } else {
+                                    viewModel.startExportAndCleanup()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = StudioGreen,
+                                contentColor = StudioBgDark
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier
+                                .height(32.dp)
+                                .padding(end = 4.dp)
+                                .testTag("top_single_export_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.FileDownload,
+                                contentDescription = "Xuất video",
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text("Xuất video", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -636,7 +643,7 @@ fun StudioMainScreen(
                                     containerColor = StudioCyan,
                                     contentColor = StudioBgDark
                                 ),
-                                shape = RoundedCornerShape(10.dp),
+                                shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(48.dp)
@@ -644,7 +651,40 @@ fun StudioMainScreen(
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text("Chọn hoặc Tải Video", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                Text("+ Chọn hoặc Tải Video", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            // Nút "💬 Liên hệ ADMIN": Mở trực tiếp trang Facebook (ưu tiên ứng dụng Facebook, fallback trình duyệt)
+                            OutlinedButton(
+                                onClick = {
+                                    val fbUrl = "https://www.facebook.com/share/19o6cDY1cf/"
+                                    try {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(fbUrl)).apply {
+                                            setPackage("com.facebook.katana")
+                                        }
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse(fbUrl))
+                                        context.startActivity(webIntent)
+                                    }
+                                },
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
+                                    contentColor = androidx.compose.ui.graphics.Color(0xFF00E5FF)
+                                ),
+                                border = androidx.compose.foundation.BorderStroke(1.5.dp, androidx.compose.ui.graphics.Color(0xFF00E5FF)),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .testTag("welcome_contact_admin_button")
+                            ) {
+                                Text(
+                                    text = "💬 Liên hệ ADMIN",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = androidx.compose.ui.graphics.Color(0xFF00E5FF)
+                                )
                             }
                         }
                     }
