@@ -66,6 +66,7 @@ data class StudioUiState(
     val retranslateStatusMessage: String = "",
     val translationSuccessful: Boolean = false,
     val userApiKey: String = "",
+    val savedApiKeys: List<String> = emptyList(),
     val errorAlertTitle: String? = null,
     val errorAlertMessage: String? = null,
     val showApiKeyDialog: Boolean = false,
@@ -100,8 +101,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private var lastSpokenSegmentId: Long? = null
 
     init {
-        val savedKey = ApiKeyManager.getSavedApiKey(application)
-        _uiState.update { it.copy(userApiKey = savedKey) }
+        val savedKeys = ApiKeyManager.getSavedApiKeys(application)
+        val savedKeyText = savedKeys.joinToString("\n")
+        _uiState.update { it.copy(userApiKey = savedKeyText, savedApiKeys = savedKeys) }
 
         // Quan sát danh sách dự án từ Room DB nhưng KHÔNG tự động nạp activeProject khi khởi động
         // Mặc định ban đầu luôn là màn hình chờ (Ảnh 1) yêu cầu người dùng bấm chọn hoặc thêm video
@@ -123,14 +125,14 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun testApiKey(key: String) {
-        val cleanKey = ApiKeyManager.sanitizeApiKey(key)
-        if (cleanKey.isBlank()) {
+    fun testApiKey(rawKeyInput: String) {
+        val parsedKeys = ApiKeyManager.parseApiKeys(rawKeyInput)
+        if (parsedKeys.isEmpty()) {
             _uiState.update {
                 it.copy(
                     isTestingApiKey = false,
                     isApiKeyValid = false,
-                    apiKeyValidationMessage = "Vui lòng dán API Key trước khi kiểm tra."
+                    apiKeyValidationMessage = "Vui lòng nhập ít nhất 1 API Key hợp lệ trước khi kiểm tra."
                 )
             }
             return
@@ -141,45 +143,57 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 it.copy(
                     isTestingApiKey = true,
                     isApiKeyValid = null,
-                    apiKeyValidationMessage = "Đang kiểm tra kết nối với máy chủ Google AI Studio..."
+                    apiKeyValidationMessage = "Đang kiểm tra kết nối lần lượt ${parsedKeys.size} API Key với máy chủ Google AI Studio..."
                 )
             }
-            val result = ApiKeyManager.validateGeminiApiKey(cleanKey)
-            if (result.isSuccess) {
+            var successCount = 0
+            val errors = mutableListOf<String>()
+
+            for ((i, key) in parsedKeys.withIndex()) {
+                val res = ApiKeyManager.validateGeminiApiKey(key)
+                if (res.isSuccess) {
+                    successCount++
+                } else {
+                    val err = res.exceptionOrNull()?.localizedMessage ?: "Lỗi kết nối"
+                    errors.add("Key #${i + 1}: $err")
+                }
+            }
+
+            if (successCount > 0) {
                 _uiState.update {
                     it.copy(
                         isTestingApiKey = false,
                         isApiKeyValid = true,
-                        apiKeyValidationMessage = "✅ Kết nối Google AI Studio thành công! API Key hoạt động hoàn hảo."
+                        apiKeyValidationMessage = "✅ Xác thực thành công $successCount/${parsedKeys.size} API Key! Đã kích hoạt cơ chế xoay vòng Round-Robin tự động."
                     )
                 }
             } else {
-                val errorMsg = result.exceptionOrNull()?.localizedMessage ?: "Xác thực thất bại"
                 _uiState.update {
                     it.copy(
                         isTestingApiKey = false,
                         isApiKeyValid = false,
-                        apiKeyValidationMessage = "❌ $errorMsg"
+                        apiKeyValidationMessage = "❌ Tất cả ${parsedKeys.size} API Key đều không khả dụng: ${errors.joinToString("; ")}"
                     )
                 }
             }
         }
     }
 
-    fun saveApiKey(key: String) {
-        val cleanKey = ApiKeyManager.sanitizeApiKey(key)
-        if (cleanKey.isBlank()) {
+    fun saveApiKey(keyInput: String) {
+        val parsedKeys = ApiKeyManager.parseApiKeys(keyInput)
+        if (parsedKeys.isEmpty()) {
             ApiKeyManager.clearApiKey(getApplication())
             _uiState.update {
                 it.copy(
                     userApiKey = "",
+                    savedApiKeys = emptyList(),
                     showApiKeyDialog = false,
                     isTestingApiKey = false,
                     apiKeyValidationMessage = null,
                     isApiKeyValid = null
                 )
             }
-            showNotice("Đã xoá API Key. Hệ thống chuyển sang chế độ Google Neural Direct miễn phí.")
+            showNotice("Đã xoá danh sách API Key. Hệ thống chuyển sang chế độ Google Neural Direct miễn phí.")
             return
         }
 
@@ -188,48 +202,67 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 it.copy(
                     isTestingApiKey = true,
                     isApiKeyValid = null,
-                    apiKeyValidationMessage = "Đang xác thực với máy chủ Google AI Studio..."
+                    apiKeyValidationMessage = "Đang xác thực ${parsedKeys.size} API Key với Google AI Studio..."
                 )
             }
-            val validation = ApiKeyManager.validateGeminiApiKey(cleanKey)
-            if (validation.isSuccess) {
-                ApiKeyManager.saveApiKey(getApplication(), cleanKey)
+            // Kiểm tra key đầu tiên hoặc ít nhất 1 key hoạt động
+            var activeKeyFound = false
+            for (key in parsedKeys) {
+                val validation = ApiKeyManager.validateGeminiApiKey(key)
+                if (validation.isSuccess) {
+                    activeKeyFound = true
+                    break
+                }
+            }
+
+            if (activeKeyFound) {
+                ApiKeyManager.saveApiKeys(getApplication(), parsedKeys)
+                val fullText = parsedKeys.joinToString("\n")
                 _uiState.update {
                     it.copy(
-                        userApiKey = cleanKey,
+                        userApiKey = fullText,
+                        savedApiKeys = parsedKeys,
                         showApiKeyDialog = false,
                         isTestingApiKey = false,
                         isApiKeyValid = true,
                         apiKeyValidationMessage = null
                     )
                 }
-                showNotice("✅ Đã kết nối và lưu API Key thành công! XThoáng AI (Gemini 2.5 Flash) đã sẵn sàng.")
+                showNotice("✅ Đã lưu thành công ${parsedKeys.size} API Key! Hệ thống tự động chuyển đổi xoay vòng khi hết hạn ngạch (Quota/429).")
             } else {
-                val errorMsg = validation.exceptionOrNull()?.localizedMessage ?: "Lỗi xác thực API Key"
+                // Cho phép lưu dự phòng nếu người dùng muốn
+                ApiKeyManager.saveApiKeys(getApplication(), parsedKeys)
+                val fullText = parsedKeys.joinToString("\n")
                 _uiState.update {
                     it.copy(
+                        userApiKey = fullText,
+                        savedApiKeys = parsedKeys,
+                        showApiKeyDialog = false,
                         isTestingApiKey = false,
                         isApiKeyValid = false,
-                        apiKeyValidationMessage = "❌ $errorMsg"
+                        apiKeyValidationMessage = null
                     )
                 }
+                showNotice("⚠️ Đã lưu ${parsedKeys.size} API Key. Vui lòng kiểm tra lại hạn ngạch mạng.")
             }
         }
     }
 
-    fun saveApiKeyDirectlyWithoutValidation(key: String) {
-        val cleanKey = ApiKeyManager.sanitizeApiKey(key)
-        ApiKeyManager.saveApiKey(getApplication(), cleanKey)
+    fun saveApiKeyDirectlyWithoutValidation(keyInput: String) {
+        val parsedKeys = ApiKeyManager.parseApiKeys(keyInput)
+        ApiKeyManager.saveApiKeys(getApplication(), parsedKeys)
+        val fullText = parsedKeys.joinToString("\n")
         _uiState.update {
             it.copy(
-                userApiKey = cleanKey,
+                userApiKey = fullText,
+                savedApiKeys = parsedKeys,
                 showApiKeyDialog = false,
                 isTestingApiKey = false,
                 apiKeyValidationMessage = null,
                 isApiKeyValid = null
             )
         }
-        showNotice("Đã lưu API Key.")
+        showNotice("Đã lưu ${parsedKeys.size} API Key.")
     }
 
     fun clearApiKey() {
@@ -237,13 +270,14 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update {
             it.copy(
                 userApiKey = "",
+                savedApiKeys = emptyList(),
                 showApiKeyDialog = false,
                 isTestingApiKey = false,
                 apiKeyValidationMessage = null,
                 isApiKeyValid = null
             )
         }
-        showNotice("Đã xoá API Key. Hệ thống sử dụng Google Neural Direct miễn phí.")
+        showNotice("Đã xoá danh sách API Key. Hệ thống sử dụng Google Neural Direct miễn phí.")
     }
 
     fun openApiKeyDialog() {
@@ -788,8 +822,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 indexNumber = currentSegments.size + 1,
                 startTimeMs = newStart,
                 endTimeMs = newEnd,
-                originalChinese = "这里是一段新的中文台词",
-                vietnameseText = "Đây là một đoạn thoại mới được thêm vào"
+                originalChinese = "",
+                vietnameseText = ""
             )
             val newId = subtitleDao.insertSubtitle(newSeg)
             val updatedList = currentSegments + newSeg.copy(id = newId)
@@ -930,8 +964,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 indexNumber = currentSegments.size + 1,
                 startTimeMs = newStart,
                 endTimeMs = newEnd,
-                originalChinese = "这里是一句新的中文台词",
-                vietnameseText = "Lời thoại tiếng Việt mới thêm"
+                originalChinese = "",
+                vietnameseText = ""
             )
             val newId = subtitleDao.insertSubtitle(newSeg)
             val updated = (currentSegments + newSeg.copy(id = newId)).sortedBy { it.startTimeMs }

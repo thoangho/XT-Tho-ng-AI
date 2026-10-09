@@ -545,8 +545,8 @@ object VideoImportService {
                     indexNumber = 1,
                     startTimeMs = 300L,
                     endTimeMs = durationMs.coerceAtLeast(3000L),
-                    originalChinese = "欢迎使用 DubStudio AI 翻译视频",
-                    vietnameseText = "Chào mừng bạn sử dụng DubStudio AI để dịch video"
+                    originalChinese = "",
+                    vietnameseText = ""
                 )
             )
         }

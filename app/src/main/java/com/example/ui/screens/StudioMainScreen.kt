@@ -780,7 +780,7 @@ fun StudioMainScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "Nhập Google Gemini API Key để kích hoạt dịch ngữ cảnh cao cấp (Gemini 2.5 Flash). Nếu không nhập, ứng dụng vẫn hoạt động bình thường với Google Neural Direct (Miễn phí 100%).",
+                        text = "Nhập một hoặc nhiều Google Gemini API Key (mỗi dòng một key hoặc phân cách bằng dấu phẩy) để kích hoạt cơ chế xoay vòng thông minh (Round-Robin). Nếu một key bị giới hạn 429 hoặc lỗi hạn ngạch, hệ thống sẽ tự động chuyển sang key tiếp theo mà không làm gián đoạn ứng dụng.",
                         color = Color.White.copy(alpha = 0.8f),
                         fontSize = 12.sp,
                         lineHeight = 17.sp
@@ -788,8 +788,9 @@ fun StudioMainScreen(
                     OutlinedTextField(
                         value = tempApiKey,
                         onValueChange = { tempApiKey = it },
-                        placeholder = { Text("Dán API Key (AIzaSy...)", fontSize = 12.sp, color = Color.White.copy(alpha = 0.4f)) },
-                        singleLine = true,
+                        placeholder = { Text("Dán 1 hoặc nhiều API Key (AIzaSy...)\nMỗi key 1 dòng hoặc cách nhau bằng dấu phẩy", fontSize = 11.sp, color = Color.White.copy(alpha = 0.4f)) },
+                        singleLine = false,
+                        maxLines = 5,
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("api_key_input"),

@@ -1240,8 +1240,8 @@ fun InteractiveSubtitleMappingCard(
                             }
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = localChineseText,
-                                color = Color(0xFFFFEB3B), // Classic yellow Douyin subtitle color
+                                text = if (localChineseText.isNotBlank()) localChineseText else "(Chưa có câu thoại tiếng Trung)",
+                                color = if (localChineseText.isNotBlank()) Color(0xFFFFEB3B) else Color.White.copy(alpha = 0.4f), // Classic yellow Douyin subtitle color
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium
                             )

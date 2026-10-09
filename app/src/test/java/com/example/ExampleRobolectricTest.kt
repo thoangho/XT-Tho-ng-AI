@@ -300,4 +300,61 @@ class ExampleRobolectricTest {
             assertTrue("Audio file must be greater than 44 bytes WAV header", audioFile.length() > 44L)
         }
     }
+
+    @Test
+    fun testMultiApiKeyStorageAndRoundRobin() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val key1 = "AIzaSyTestKeyOne1111111"
+        val key2 = "AIzaSyTestKeyTwo2222222"
+        val key3 = "AIzaSyTestKeyThree333333"
+
+        // 1. Kiểm tra tách và chuẩn hóa danh sách
+        val rawMultiInput = "$key1\n$key2, $key3\n"
+        val parsed = com.example.data.network.ApiKeyManager.parseApiKeys(rawMultiInput)
+        assertEquals(3, parsed.size)
+        assertEquals(key1, parsed[0])
+        assertEquals(key2, parsed[1])
+        assertEquals(key3, parsed[2])
+
+        // 2. Lưu vào SharedPreferences
+        com.example.data.network.ApiKeyManager.saveApiKeys(context, parsed)
+        val loadedKeys = com.example.data.network.ApiKeyManager.getSavedApiKeys(context)
+        assertEquals(3, loadedKeys.size)
+        assertEquals(key1, loadedKeys[0])
+
+        // 3. Kiểm tra xoay vòng (Round-Robin)
+        val rotated1 = com.example.data.network.ApiKeyManager.getNextRotatedKey(context)
+        val rotated2 = com.example.data.network.ApiKeyManager.getNextRotatedKey(context)
+        assertNotNull(rotated1)
+        assertNotNull(rotated2)
+
+        // 4. Kiểm tra cơ chế Fallback tự động khi gặp lỗi
+        val attemptedKeys = mutableListOf<String>()
+        kotlinx.coroutines.runBlocking {
+            val result = com.example.data.network.ApiKeyManager.executeWithRoundRobinFallback<String>(
+                context = context,
+                candidateKeys = parsed
+            ) { key ->
+                attemptedKeys.add(key)
+                if (key == key1) {
+                    // Giả lập lỗi hạn ngạch 429
+                    throw Exception("429 Quota Exceeded")
+                } else if (key == key2) {
+                    // Key 2 thành công
+                    "Success with $key"
+                } else {
+                    null
+                }
+            }
+            assertNotNull(result)
+            assertTrue(result!!.contains("Success with $key2"))
+            assertTrue(attemptedKeys.contains(key1))
+            assertTrue(attemptedKeys.contains(key2))
+        }
+
+        // Dọn dẹp
+        com.example.data.network.ApiKeyManager.clearApiKey(context)
+        val clearedKeys = com.example.data.network.ApiKeyManager.getSavedApiKeys(context)
+        assertTrue(clearedKeys.isEmpty())
+    }
 }

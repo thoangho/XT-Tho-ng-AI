@@ -16,6 +16,10 @@ object ApiKeyManager {
     private const val TAG = "ApiKeyManager"
     private const val PREFS_NAME = "xthoang_ai_prefs"
     private const val KEY_GEMINI_API = "user_gemini_api_key"
+    private const val KEY_GEMINI_API_KEYS_LIST = "user_gemini_api_keys_list"
+
+    // Atomic / thread-safe round-robin counter for rotating keys
+    private val keyRotationIndex = java.util.concurrent.atomic.AtomicInteger(0)
 
     private val httpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -103,19 +107,137 @@ object ApiKeyManager {
         }
     }
 
-    fun getSavedApiKey(context: Context): String {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.getString(KEY_GEMINI_API, "") ?: ""
+    /**
+     * Tách chuỗi nhập đa dòng/dấu phẩy/chấm phẩy thành danh sách các API Key hợp lệ và không trùng lặp
+     */
+    fun parseApiKeys(rawText: String?): List<String> {
+        if (rawText.isNullOrBlank()) return emptyList()
+        return rawText.split("\n", ",", ";", "\t")
+            .map { sanitizeApiKey(it) }
+            .filter { it.isNotBlank() && it != "MY_GEMINI_API_KEY" }
+            .distinct()
     }
 
-    fun saveApiKey(context: Context, key: String) {
-        val cleanKey = sanitizeApiKey(key)
+    /**
+     * Lấy danh sách tất cả các Gemini API Key người dùng đã nạp
+     */
+    fun getSavedApiKeys(context: Context): List<String> {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putString(KEY_GEMINI_API, cleanKey).apply()
+        val jsonStr = prefs.getString(KEY_GEMINI_API_KEYS_LIST, null)
+        val list = mutableListOf<String>()
+        if (!jsonStr.isNullOrBlank()) {
+            try {
+                val array = JSONArray(jsonStr)
+                for (i in 0 until array.length()) {
+                    val k = sanitizeApiKey(array.optString(i))
+                    if (k.isNotBlank() && k != "MY_GEMINI_API_KEY" && !list.contains(k)) {
+                        list.add(k)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Lỗi phân tích cú pháp danh sách API Key: ${e.message}")
+            }
+        }
+        // Fallback: Nếu danh sách trống nhưng có 1 key đơn lẻ đã lưu từ trước
+        if (list.isEmpty()) {
+            val single = prefs.getString(KEY_GEMINI_API, "") ?: ""
+            val clean = sanitizeApiKey(single)
+            if (clean.isNotBlank() && clean != "MY_GEMINI_API_KEY") {
+                list.add(clean)
+            }
+        }
+        return list
+    }
+
+    /**
+     * Lưu danh sách nhiều API Key vào SharedPreferences
+     */
+    fun saveApiKeys(context: Context, keys: List<String>) {
+        val cleanKeys = keys.map { sanitizeApiKey(it) }
+            .filter { it.isNotBlank() && it != "MY_GEMINI_API_KEY" }
+            .distinct()
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val jsonArray = JSONArray()
+        cleanKeys.forEach { jsonArray.put(it) }
+        val primaryKey = cleanKeys.firstOrNull() ?: ""
+        prefs.edit()
+            .putString(KEY_GEMINI_API_KEYS_LIST, jsonArray.toString())
+            .putString(KEY_GEMINI_API, primaryKey)
+            .apply()
+    }
+
+    /**
+     * Lấy API Key đầu tiên hoặc key đơn lẻ
+     */
+    fun getSavedApiKey(context: Context): String {
+        val all = getSavedApiKeys(context)
+        return all.firstOrNull() ?: ""
+    }
+
+    /**
+     * Lưu 1 chuỗi chứa 1 hoặc nhiều API Key (phân cách bằng xuống dòng hoặc dấu phẩy)
+     */
+    fun saveApiKey(context: Context, key: String) {
+        val parsed = parseApiKeys(key)
+        saveApiKeys(context, parsed)
+    }
+
+    /**
+     * Lấy key theo thứ tự xoay vòng Round-Robin từ danh sách
+     */
+    fun getNextRotatedKey(context: Context): String? {
+        val allKeys = getSavedApiKeys(context)
+        if (allKeys.isEmpty()) return null
+        val idx = Math.floorMod(keyRotationIndex.getAndIncrement(), allKeys.size)
+        return allKeys.getOrNull(idx)
+    }
+
+    /**
+     * Cơ chế Round-Robin + Fallback:
+     * Chạy action với key hiện tại trong danh sách. Nếu gặp lỗi Quota (429), Hết hạn hoặc Lỗi xác thực (401/403),
+     * tự động fallback sang key kế tiếp trong danh sách để thử lại (retry) ngay lập tức trên background thread.
+     */
+    suspend fun <T> executeWithRoundRobinFallback(
+        context: Context,
+        candidateKeys: List<String> = emptyList(),
+        action: suspend (apiKey: String) -> T?
+    ): T? {
+        val keys = if (candidateKeys.isNotEmpty()) {
+            candidateKeys.map { sanitizeApiKey(it) }.filter { it.isNotBlank() && it != "MY_GEMINI_API_KEY" }.distinct()
+        } else {
+            getSavedApiKeys(context)
+        }
+
+        if (keys.isEmpty()) {
+            return null
+        }
+
+        // Bắt đầu từ vị trí round-robin hiện tại
+        val startIndex = Math.floorMod(keyRotationIndex.getAndIncrement(), keys.size)
+        val orderedKeys = List(keys.size) { i ->
+            keys[(startIndex + i) % keys.size]
+        }
+
+        for ((attemptIndex, key) in orderedKeys.withIndex()) {
+            try {
+                val result = action(key)
+                if (result != null) {
+                    return result
+                }
+                Log.w(TAG, "Key #${attemptIndex + 1}/${orderedKeys.size} không trả về kết quả, thử key kế tiếp...")
+            } catch (e: Exception) {
+                val msg = e.localizedMessage ?: e.message ?: ""
+                Log.w(TAG, "Key #${attemptIndex + 1}/${orderedKeys.size} gặp lỗi ($msg). Tự động xoay vòng sang key tiếp theo...")
+            }
+        }
+        return null
     }
 
     fun clearApiKey(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().remove(KEY_GEMINI_API).apply()
+        prefs.edit()
+            .remove(KEY_GEMINI_API)
+            .remove(KEY_GEMINI_API_KEYS_LIST)
+            .apply()
     }
 }

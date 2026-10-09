@@ -33,18 +33,30 @@ object TranslationService {
     }
 
     fun hasConfiguredApiKey(userKey: String?): Boolean {
-        val trimmedUser = userKey?.trim() ?: ""
-        if (trimmedUser.isNotBlank() && trimmedUser != "MY_GEMINI_API_KEY") return true
-        val buildKey = BuildConfig.GEMINI_API_KEY.trim()
-        return buildKey.isNotBlank() && buildKey != "MY_GEMINI_API_KEY"
+        val keys = getEffectiveApiKeys(userKey)
+        return keys.isNotEmpty()
+    }
+
+    /**
+     * Lấy danh sách các API Key hợp lệ (kể cả nhiều key từ người dùng hoặc BuildConfig)
+     */
+    fun getEffectiveApiKeys(userKey: String?): List<String> {
+        val parsed = ApiKeyManager.parseApiKeys(userKey)
+        val buildKey = ApiKeyManager.sanitizeApiKey(BuildConfig.GEMINI_API_KEY)
+        val combined = mutableListOf<String>()
+        combined.addAll(parsed)
+        if (buildKey.isNotBlank() && buildKey != "MY_GEMINI_API_KEY" && !combined.contains(buildKey)) {
+            combined.add(buildKey)
+        }
+        return combined
     }
 
     fun getEffectiveApiKey(userKey: String?): String? {
-        val trimmedUser = userKey?.trim() ?: ""
-        if (trimmedUser.isNotBlank() && trimmedUser != "MY_GEMINI_API_KEY") return trimmedUser
-        val buildKey = BuildConfig.GEMINI_API_KEY.trim()
-        if (buildKey.isNotBlank() && buildKey != "MY_GEMINI_API_KEY") return buildKey
-        return null
+        val keys = getEffectiveApiKeys(userKey)
+        if (keys.isEmpty()) return null
+        // Sử dụng xoay vòng nếu có nhiều key
+        val index = Math.floorMod(System.currentTimeMillis().toInt(), keys.size)
+        return keys[index]
     }
 
     /**
@@ -134,14 +146,21 @@ object TranslationService {
             )
         }
 
-        val effectiveKey = getEffectiveApiKey(userApiKey)
+        val effectiveKeys = getEffectiveApiKeys(userApiKey)
+        val effectiveKey = effectiveKeys.firstOrNull()
         var currentTranslation: String? = null
         var engineUsed = "Google Neural Direct (Tốc độ cao)"
 
-        // PASS 1: Base AI translation with context injection (if Gemini API key is configured)
-        if (effectiveKey != null) {
+        // PASS 1: Base AI translation with context injection and candidate keys fallback
+        if (effectiveKeys.isNotEmpty()) {
             try {
-                val geminiResult = tryTranslateWithGemini(trimmed, effectiveKey, videoTitle, videoCategory)
+                val geminiResult = tryTranslateWithGemini(
+                    chineseText = trimmed,
+                    apiKey = effectiveKey ?: "",
+                    videoTitle = videoTitle,
+                    videoCategory = videoCategory,
+                    allCandidateKeys = effectiveKeys
+                )
                 if (!geminiResult.isNullOrBlank()) {
                     currentTranslation = geminiResult
                     engineUsed = "XThoáng AI (Gemini Flash)"
@@ -436,68 +455,80 @@ object TranslationService {
         chineseText: String,
         apiKey: String,
         videoTitle: String = "",
-        videoCategory: String = ""
+        videoCategory: String = "",
+        allCandidateKeys: List<String> = emptyList()
     ): String? {
-        val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$apiKey"
+        val keysToTry = if (allCandidateKeys.isNotEmpty()) allCandidateKeys else listOf(apiKey)
+        
+        for ((idx, currentKey) in keysToTry.withIndex()) {
+            val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$currentKey"
 
-        val prompt = """
-            Bạn là chuyên gia dịch thuật và lồng tiếng video ngắn Douyin/TikTok sang Tiếng Việt cho hệ thống XThoáng AI.
-            
-            [Thông tin ngữ cảnh video]
-            - Tiêu đề video: ${if (videoTitle.isNotBlank()) videoTitle else "Video ngắn Douyin/TikTok"}
-            - Thể loại/Chủ đề: ${if (videoCategory.isNotBlank()) videoCategory else "Ẩm thực, công nghệ, hài kịch, vlog đời sống"}
-            
-            [Yêu cầu dịch thuật chuẩn xác]
-            1. Dịch câu thoại Tiếng Trung thật tự nhiên, sát nghĩa ngữ cảnh, chuẩn văn phong lồng tiếng Việt Nam (ngắn gọn, giàu cảm xúc, đúng nhịp nói nhân vật).
-            2. KHÔNG bỏ sót bất kỳ câu thoại ngắn nào (kể cả từ cảm thán, tiếng đệm: 哇, 快看, 对, 走, 真的, 等等, 绝了, 尝尝, 好吃, 厉害).
-            3. Giữ trọn nghĩa và chuyển hóa mượt mà các từ lóng và thành ngữ giới trẻ Douyin.
-            4. Chỉ trả về DUY NHẤT câu dịch Tiếng Việt, không giải thích hay mở ngoặc.
+            val prompt = """
+                Bạn là chuyên gia dịch thuật và lồng tiếng video ngắn Douyin/TikTok sang Tiếng Việt cho hệ thống XThoáng AI.
+                
+                [Thông tin ngữ cảnh video]
+                - Tiêu đề video: ${if (videoTitle.isNotBlank()) videoTitle else "Video ngắn Douyin/TikTok"}
+                - Thể loại/Chủ đề: ${if (videoCategory.isNotBlank()) videoCategory else "Ẩm thực, công nghệ, hài kịch, vlog đời sống"}
+                
+                [Yêu cầu dịch thuật chuẩn xác]
+                1. Dịch câu thoại Tiếng Trung thật tự nhiên, sát nghĩa ngữ cảnh, chuẩn văn phong lồng tiếng Việt Nam (ngắn gọn, giàu cảm xúc, đúng nhịp nói nhân vật).
+                2. KHÔNG bỏ sót bất kỳ câu thoại ngắn nào (kể cả từ cảm thán, tiếng đệm: 哇, 快看, 对, 走, 真的, 等等, 绝了, 尝尝, 好吃, 厉害).
+                3. Giữ trọn nghĩa và chuyển hóa mượt mà các từ lóng và thành ngữ giới trẻ Douyin.
+                4. Chỉ trả về DUY NHẤT câu dịch Tiếng Việt, không giải thích hay mở ngoặc.
 
-            Câu thoại gốc: $chineseText
-        """.trimIndent()
+                Câu thoại gốc: $chineseText
+            """.trimIndent()
 
-        val jsonBody = JSONObject().apply {
-            put("contents", JSONArray().apply {
-                put(JSONObject().apply {
-                    put("parts", JSONArray().apply {
-                        put(JSONObject().apply {
-                            put("text", prompt)
+            val jsonBody = JSONObject().apply {
+                put("contents", JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("parts", JSONArray().apply {
+                            put(JSONObject().apply {
+                                put("text", prompt)
+                            })
                         })
                     })
                 })
-            })
-            put("generationConfig", JSONObject().apply {
-                put("temperature", 0.2)
-                put("topP", 0.8)
-                put("maxOutputTokens", 512)
-            })
-        }
-
-        val request = Request.Builder()
-            .url(url)
-            .post(jsonBody.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
-            .build()
-
-        httpClient.newCall(request).execute().use { response ->
-            if (response.code in 400..403) {
-                val errBody = response.body?.string() ?: ""
-                Log.w(TAG, "Gemini API Key rejected or invalid: ${response.code} $errBody")
-                return null
+                put("generationConfig", JSONObject().apply {
+                    put("temperature", 0.2)
+                    put("topP", 0.8)
+                    put("maxOutputTokens", 512)
+                })
             }
-            if (!response.isSuccessful) {
-                Log.w(TAG, "Gemini HTTP error ${response.code}")
-                return null
+
+            val request = Request.Builder()
+                .url(url)
+                .post(jsonBody.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+                .build()
+
+            try {
+                httpClient.newCall(request).execute().use { response ->
+                    if (response.code in 400..403 || response.code == 429) {
+                        val errBody = response.body?.string() ?: ""
+                        Log.w(TAG, "Gemini API Key #$idx bị giới hạn/từ chối (${response.code}). Chuyển sang key tiếp theo...")
+                        return@use // thử key tiếp theo trong vòng lặp
+                    }
+                    if (!response.isSuccessful) {
+                        Log.w(TAG, "Gemini HTTP error ${response.code}")
+                        return@use
+                    }
+                    val responseStr = response.body?.string() ?: return@use
+                    val responseJson = JSONObject(responseStr)
+                    val candidates = responseJson.optJSONArray("candidates") ?: return@use
+                    val firstCandidate = candidates.optJSONObject(0) ?: return@use
+                    val content = firstCandidate.optJSONObject("content") ?: return@use
+                    val parts = content.optJSONArray("parts") ?: return@use
+                    val part = parts.optJSONObject(0) ?: return@use
+                    val rawText = part.optString("text")?.trim().orEmpty()
+                    if (rawText.isNotBlank()) {
+                        return com.example.data.repository.TranslationRepository.sanitizeTranslatedSubtitles(rawText)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Lỗi mạng khi gọi Gemini với Key #$idx: ${e.message}. Đang thử key dự phòng...")
             }
-            val responseStr = response.body?.string() ?: return null
-            val responseJson = JSONObject(responseStr)
-            val candidates = responseJson.optJSONArray("candidates") ?: return null
-            val firstCandidate = candidates.optJSONObject(0) ?: return null
-            val content = firstCandidate.optJSONObject("content") ?: return null
-            val parts = content.optJSONArray("parts") ?: return null
-            val part = parts.optJSONObject(0) ?: return null
-            val rawText = part.optString("text")?.trim().orEmpty()
-            return com.example.data.repository.TranslationRepository.sanitizeTranslatedSubtitles(rawText)
         }
+        return null
     }
 
     /**
@@ -525,7 +556,7 @@ object TranslationService {
             seg.copy(originalChinese = if (pureText.isNotBlank()) pureText else seg.originalChinese)
         }
 
-        val effectiveKey = getEffectiveApiKey(userApiKey)
+        val effectiveKeys = getEffectiveApiKeys(userApiKey)
         val batchSize = 15
         val batches = cleanedSegments.chunked(batchSize)
         val totalBatches = batches.size
@@ -544,10 +575,10 @@ object TranslationService {
 
             var batchTranslatedMap: Map<Long, String>? = null
 
-            // Tầng 1: Thử dịch lô bằng Gemini Batch JSON API nếu có API Key
-            if (effectiveKey != null) {
+            // Tầng 1: Thử dịch lô bằng Gemini Batch JSON API với danh sách Keys và cơ chế Round-Robin / Fallback
+            if (effectiveKeys.isNotEmpty()) {
                 try {
-                    batchTranslatedMap = tryTranslateBatchGemini(batch, effectiveKey, videoTitle, videoCategory)
+                    batchTranslatedMap = tryTranslateBatchGemini(batch, effectiveKeys.first(), videoTitle, videoCategory, effectiveKeys)
                 } catch (e: Exception) {
                     Log.w(TAG, "Gemini Batch translation failed for batch $batchNumber: ${e.message}")
                 }
@@ -591,9 +622,10 @@ object TranslationService {
         segments: List<SubtitleSegment>,
         apiKey: String,
         videoTitle: String,
-        videoCategory: String
+        videoCategory: String,
+        allCandidateKeys: List<String> = emptyList()
     ): Map<Long, String>? {
-        val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$apiKey"
+        val keysToTry = if (allCandidateKeys.isNotEmpty()) allCandidateKeys else listOf(apiKey)
 
         val inputJsonArray = JSONArray()
         segments.forEach { seg ->
@@ -641,50 +673,60 @@ object TranslationService {
             })
         }
 
-        val request = Request.Builder()
-            .url(url)
-            .post(jsonBody.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
-            .build()
+        for ((idx, currentKey) in keysToTry.withIndex()) {
+            val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$currentKey"
+            val request = Request.Builder()
+                .url(url)
+                .post(jsonBody.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+                .build()
 
-        httpClient.newCall(request).execute().use { response ->
-            if (response.code in 400..403) {
-                val errBody = response.body?.string() ?: ""
-                Log.w(TAG, "Gemini Batch API Key rejected or invalid: ${response.code} $errBody")
-                return null
-            }
-            if (!response.isSuccessful) return null
-            val responseStr = response.body?.string() ?: return null
-            val responseJson = JSONObject(responseStr)
-            val candidates = responseJson.optJSONArray("candidates") ?: return null
-            val firstCandidate = candidates.optJSONObject(0) ?: return null
-            val content = firstCandidate.optJSONObject("content") ?: return null
-            val parts = content.optJSONArray("parts") ?: return null
-            val part = parts.optJSONObject(0) ?: return null
-            val rawText = part.optString("text")?.trim() ?: return null
+            try {
+                httpClient.newCall(request).execute().use { response ->
+                    if (response.code in 400..403 || response.code == 429) {
+                        val errBody = response.body?.string() ?: ""
+                        Log.w(TAG, "Gemini Batch Key #$idx rejected/quota exceeded (${response.code}). Falling back to next key...")
+                        return@use // thử key tiếp theo
+                    }
+                    if (!response.isSuccessful) return@use
+                    val responseStr = response.body?.string() ?: return@use
+                    val responseJson = JSONObject(responseStr)
+                    val candidates = responseJson.optJSONArray("candidates") ?: return@use
+                    val firstCandidate = candidates.optJSONObject(0) ?: return@use
+                    val content = firstCandidate.optJSONObject("content") ?: return@use
+                    val parts = content.optJSONArray("parts") ?: return@use
+                    val part = parts.optJSONObject(0) ?: return@use
+                    val rawText = part.optString("text")?.trim() ?: return@use
 
-            val cleanedJson = rawText.replace(Regex("^```json\\s*", RegexOption.IGNORE_CASE), "")
-                .replace(Regex("^```\\s*"), "")
-                .replace(Regex("\\s*```$"), "")
-                .trim()
+                    val cleanedJson = rawText.replace(Regex("^```json\\s*", RegexOption.IGNORE_CASE), "")
+                        .replace(Regex("^```\\s*"), "")
+                        .replace(Regex("\\s*```$"), "")
+                        .trim()
 
-            val startIdx = cleanedJson.indexOf('[')
-            val endIdx = cleanedJson.lastIndexOf(']')
-            if (startIdx == -1 || endIdx == -1 || endIdx <= startIdx) return null
+                    val startIdx = cleanedJson.indexOf('[')
+                    val endIdx = cleanedJson.lastIndexOf(']')
+                    if (startIdx == -1 || endIdx == -1 || endIdx <= startIdx) return@use
 
-            val jsonArrayStr = cleanedJson.substring(startIdx, endIdx + 1)
-            val array = JSONArray(jsonArrayStr)
-            val result = mutableMapOf<Long, String>()
-            for (i in 0 until array.length()) {
-                val obj = array.getJSONObject(i)
-                val id = obj.optLong("id", -1L)
-                val vi = obj.optString("vi", "").trim()
-                if (id != -1L && vi.isNotBlank()) {
-                    val sanitizedVi = com.example.data.repository.TranslationRepository.sanitizeTranslatedSubtitles(vi)
-                    result[id] = sanitizedVi
+                    val jsonArrayStr = cleanedJson.substring(startIdx, endIdx + 1)
+                    val array = JSONArray(jsonArrayStr)
+                    val result = mutableMapOf<Long, String>()
+                    for (i in 0 until array.length()) {
+                        val obj = array.getJSONObject(i)
+                        val id = obj.optLong("id", -1L)
+                        val vi = obj.optString("vi", "").trim()
+                        if (id != -1L && vi.isNotBlank()) {
+                            val sanitizedVi = com.example.data.repository.TranslationRepository.sanitizeTranslatedSubtitles(vi)
+                            result[id] = sanitizedVi
+                        }
+                    }
+                    if (result.isNotEmpty()) {
+                        return result
+                    }
                 }
+            } catch (e: Exception) {
+                Log.w(TAG, "Lỗi mạng khi gọi Gemini Batch với Key #$idx: ${e.message}")
             }
-            return result
         }
+        return null
     }
 
     private suspend fun <T> retryWithBackoff(
