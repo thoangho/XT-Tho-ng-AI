@@ -274,7 +274,7 @@ fun LowBatteryExportWarningDialog(
                 }
 
                 Text(
-                    text = "Quá trình xuất video (kết xuất FFmpeg đa luồng, làm mờ sub cũ, hòa âm lồng tiếng) là một tác vụ rất nặng và tiêu thụ nhiều năng lượng.",
+                    text = "Quá trình xuất video (kết xuất đồ họa đa luồng, làm mờ sub cũ, hòa âm lồng tiếng) là một tác vụ rất nặng và tiêu thụ nhiều năng lượng.",
                     color = Color.White.copy(alpha = 0.85f),
                     fontSize = 13.sp,
                     lineHeight = 18.sp

@@ -254,11 +254,11 @@ fun VoiceSelectionCard(
                 }
             }
 
-            // NÚT 'BẮT ĐẦU ĐỌC' CHUYÊN DỤNG (BẮT BUỘC THEO NHIỆM VỤ 2)
-            // Chỉ khi người dùng chủ động bấm nút này, hệ thống AI mới bắt đầu quá trình tạo giọng nói
+            // NÚT 'TẠO LỒNG TIẾNG / DỪNG ĐỌC LỒNG TIẾNG' (Lỗi 1)
+            val isDubbingActive = isDubbingGenerating || isDubbingPlaying
             Button(
                 onClick = {
-                    if (isDubbingPlaying) {
+                    if (isDubbingActive) {
                         onStopDubbing()
                     } else {
                         onStartDubbing()
@@ -267,8 +267,8 @@ fun VoiceSelectionCard(
                 enabled = isSubtitlesConfirmed && approvedSegmentsCount > 0,
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isDubbingPlaying) StudioRed else StudioGreen,
-                    contentColor = if (isDubbingPlaying) Color.White else StudioBgDark,
+                    containerColor = if (isDubbingActive) StudioRed else StudioGreen,
+                    contentColor = if (isDubbingActive) Color.White else StudioBgDark,
                     disabledContainerColor = StudioSurfaceCardHover,
                     disabledContentColor = Color.White.copy(alpha = 0.4f)
                 ),
@@ -278,16 +278,67 @@ fun VoiceSelectionCard(
                     .testTag("start_dubbing_button")
             ) {
                 Icon(
-                    imageVector = if (isDubbingPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
+                    imageVector = if (isDubbingActive) Icons.Default.Stop else Icons.Default.RecordVoiceOver,
                     contentDescription = null,
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = if (isDubbingPlaying) "Dừng đọc lồng tiếng" else "Bắt đầu đọc (Tạo giọng nói AI)",
+                    text = if (isDubbingActive) "Dừng đọc lồng tiếng" else "Tạo Lồng Tiếng",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold
                 )
+            }
+
+            // BỔ SUNG THANH TIẾN TRÌNH & TEXTVIEW HIỂN THỊ TỶ LỆ % TIẾN ĐỘ ĐỌC REAL-TIME (Lỗi 1)
+            if (isDubbingGenerating) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = StudioCyan.copy(alpha = 0.15f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, StudioCyan.copy(alpha = 0.5f))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Tiến độ lồng tiếng AI:",
+                                color = StudioCyan,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "${(dubbingGenerationProgress * 100).toInt().coerceIn(0, 100)}%",
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        LinearProgressIndicator(
+                            progress = { dubbingGenerationProgress.coerceIn(0f, 1f) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(8.dp)
+                                .clip(RoundedCornerShape(4.dp)),
+                            color = StudioCyan,
+                            trackColor = Color(0xFF1E293B)
+                        )
+
+                        Text(
+                            text = if (dubbingStatusMessage.isNotBlank()) dubbingStatusMessage else "Đang khởi tạo âm thanh...",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
             }
 
             // HÀNG NÚT LUỒNG 2: TẠO LỒNG TIẾNG TỪ TỆP .SRT ĐỘC LẬP

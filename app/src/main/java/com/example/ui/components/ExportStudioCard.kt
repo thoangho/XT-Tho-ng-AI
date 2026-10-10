@@ -101,133 +101,43 @@ fun ExportStudioCard(
             batteryInfo = batteryInfo
         )
 
-        // 2. ADDITIONAL UTILITIES & FULL PIPELINE CARD
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag("export_studio_card"),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = StudioSurfaceCard),
-            border = androidx.compose.foundation.BorderStroke(1.dp, StudioBorder)
+        // Tùy chọn tải phụ đề / kịch bản độc lập (gọn gàng, bảo mật)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+            // Export .SRT Button
+            OutlinedButton(
+                onClick = onExportSrt,
+                modifier = Modifier.weight(1f).testTag("export_srt_button"),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = StudioCyan),
+                border = androidx.compose.foundation.BorderStroke(1.dp, StudioCyan.copy(alpha = 0.6f))
             ) {
-                // Header
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Movie,
-                        contentDescription = "Xuất video",
-                        tint = StudioCyan,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Text(
-                        text = "Quy trình Tự động hóa Toàn diện (4 Bước)",
-                        color = Color.White,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                // Instructions: Unified top bar action
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = StudioSurfaceCardHover,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, StudioBorder)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = null,
-                            tint = StudioCyan,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = "Toàn bộ quy trình Dịch thuật & Xuất video đã được quy hoạch đồng nhất tại thanh công cụ trên cùng.",
-                            color = Color.White.copy(alpha = 0.8f),
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-
-                // Export Actions Grid
-                Text(
-                    text = "Tải file đầu ra độc lập:",
-                    color = Color.White.copy(alpha = 0.7f),
-                    fontSize = 12.sp
+                Icon(
+                    imageVector = Icons.Default.Subtitles,
+                    contentDescription = "SRT",
+                    modifier = Modifier.size(16.dp)
                 )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Tải .SRT", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    // Export .SRT Button
-                    OutlinedButton(
-                        onClick = onExportSrt,
-                        modifier = Modifier.weight(1f).testTag("export_srt_button"),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = StudioCyan),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, StudioCyan.copy(alpha = 0.6f))
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Subtitles,
-                            contentDescription = "SRT",
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Tải .SRT", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    // Export Transcript .TXT Button
-                    OutlinedButton(
-                        onClick = onExportTranscript,
-                        modifier = Modifier.weight(1f).testTag("export_txt_button"),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = StudioPurpleLight),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, StudioPurpleLight.copy(alpha = 0.6f))
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Description,
-                            contentDescription = "TXT",
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Tải Kịch bản", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-
-                // System Protection Badge
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.CleaningServices,
-                        contentDescription = "Protection",
-                        tint = StudioGreen,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Text(
-                        text = "FFmpeg đa luồng tự động dọn RAM & xóa sạch tempfile sau mỗi lần xuất.",
-                        color = StudioGreen.copy(alpha = 0.9f),
-                        fontSize = 11.sp
-                    )
-                }
+            // Export Transcript .TXT Button
+            OutlinedButton(
+                onClick = onExportTranscript,
+                modifier = Modifier.weight(1f).testTag("export_txt_button"),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = StudioPurpleLight),
+                border = androidx.compose.foundation.BorderStroke(1.dp, StudioPurpleLight.copy(alpha = 0.6f))
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Description,
+                    contentDescription = "TXT",
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Tải Kịch bản", fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
     }

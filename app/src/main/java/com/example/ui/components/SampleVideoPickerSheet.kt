@@ -1,6 +1,5 @@
 package com.example.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,15 +20,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.PlayCircleOutline
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -43,21 +39,15 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
-import androidx.compose.material3.TabRowDefaults
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -65,24 +55,27 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.data.model.SampleVideoItem
-import com.example.data.model.SampleVideoRepository
 import com.example.data.model.VideoProject
 import com.example.ui.theme.StudioAmber
 import com.example.ui.theme.StudioBgDark
 import com.example.ui.theme.StudioBorder
 import com.example.ui.theme.StudioCyan
 import com.example.ui.theme.StudioGreen
-import com.example.ui.theme.StudioPurple
 import com.example.ui.theme.StudioPurpleLight
 import com.example.ui.theme.StudioRed
 import com.example.ui.theme.StudioSurfaceCard
 import com.example.ui.theme.StudioSurfaceCardHover
 
+/**
+ * Modal Chọn & Nạp Video Người Dùng:
+ * - ĐÃ XÓA HOÀN TOÀN Tab "Video Mẫu Có Sẵn" và danh sách clip mẫu theo yêu cầu Lỗi 4.
+ * - Chỉ tập trung vào nạp video thực tế từ thiết bị (MP4, MOV), đường link URL Douyin/TikTok, hoặc danh sách video cá nhân.
+ */
 @Composable
 fun SampleVideoPickerSheet(
     activeSampleId: String?,
     allProjects: List<VideoProject>,
-    onSelectSample: (SampleVideoItem) -> Unit,
+    onSelectSample: (SampleVideoItem) -> Unit = {},
     onSelectProject: (String) -> Unit,
     onPickCustomVideo: () -> Unit,
     onImportUrl: (String, String?) -> Unit,
@@ -90,7 +83,6 @@ fun SampleVideoPickerSheet(
     onDeleteProject: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var selectedTab by remember { mutableIntStateOf(0) } // 0: Import Video Của Bạn, 1: Video Mẫu
     var showUrlDialog by remember { mutableStateOf(false) }
     var showManualDialog by remember { mutableStateOf(false) }
 
@@ -135,13 +127,13 @@ fun SampleVideoPickerSheet(
                         }
                         Column {
                             Text(
-                                text = "Chọn hoặc Thêm Video",
+                                text = "Chọn hoặc Tải Video",
                                 color = Color.White,
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "Hỗ trợ MP4 từ máy, link Douyin / TikTok hoặc clip mẫu",
+                                text = "Tải file video từ thiết bị hoặc đường dẫn Douyin / TikTok",
                                 color = Color.White.copy(alpha = 0.6f),
                                 fontSize = 11.sp
                             )
@@ -157,300 +149,168 @@ fun SampleVideoPickerSheet(
                     }
                 }
 
-                // Tab Switcher
-                TabRow(
-                    selectedTabIndex = selectedTab,
-                    containerColor = StudioSurfaceCard,
-                    contentColor = StudioCyan,
-                    indicator = { tabPositions ->
-                        TabRowDefaults.SecondaryIndicator(
-                            modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
-                            color = StudioCyan
-                        )
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
+                // KHỐI CHỨC NĂNG NẠP VIDEO THỰC TẾ
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Tab(
-                        selected = selectedTab == 0,
-                        onClick = { selectedTab = 0 },
-                        text = {
-                            Text(
-                                text = "Thêm Video Của Bạn",
-                                fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal,
-                                fontSize = 12.sp
-                            )
-                        }
-                    )
-                    Tab(
-                        selected = selectedTab == 1,
-                        onClick = { selectedTab = 1 },
-                        text = {
-                            Text(
-                                text = "Video Mẫu Có Sẵn",
-                                fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal,
-                                fontSize = 12.sp
-                            )
-                        }
-                    )
-                }
-
-                if (selectedTab == 0) {
-                    // TAB 0: IMPORT CUSTOM VIDEO FROM DEVICE / URL
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    // Nút chọn video từ thiết bị
+                    Button(
+                        onClick = {
+                            onPickCustomVideo()
+                            onDismiss()
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp)
+                            .testTag("pick_custom_video_button"),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = StudioCyan,
+                            contentColor = StudioBgDark
+                        )
                     ) {
-                        // Big Prominent Button: Pick from Phone Files
-                        Button(
-                            onClick = {
-                                onPickCustomVideo()
-                                onDismiss()
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(56.dp)
-                                .testTag("pick_custom_video_button"),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = StudioCyan,
-                                contentColor = StudioBgDark
-                            )
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.FolderOpen,
-                                contentDescription = "Chọn từ máy",
-                                modifier = Modifier.size(22.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = "📁 Chọn Video Từ Thiết Bị (MP4, MOV, MKV)",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "Chọn clip TikTok / Douyin bất kỳ có trong điện thoại của bạn",
-                                    fontSize = 10.sp,
-                                    color = StudioBgDark.copy(alpha = 0.85f)
-                                )
-                            }
-                        }
-
-                        // Secondary Options
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = { showUrlDialog = true },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("import_url_button"),
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = StudioPurpleLight),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, StudioPurpleLight.copy(alpha = 0.6f)),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
-                            ) {
-                                Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Nhập link URL", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                            }
-
-                            OutlinedButton(
-                                onClick = { showManualDialog = true },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("create_manual_button"),
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = StudioAmber),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, StudioAmber.copy(alpha = 0.6f)),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
-                            ) {
-                                Icon(Icons.Default.EditNote, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Tạo dự án mới", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-
-                        // Previously imported projects list
-                        val userProjects = allProjects.filter { !it.isSample }
-                        if (userProjects.isNotEmpty()) {
+                        Icon(
+                            imageVector = Icons.Default.FolderOpen,
+                            contentDescription = "Chọn từ máy",
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
                             Text(
-                                text = "Dự án video bạn đã nhập (${userProjects.size}):",
-                                color = Color.White.copy(alpha = 0.7f),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(top = 4.dp)
+                                text = "📁 Chọn Video Từ Thiết Bị (MP4, MOV, MKV)",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
                             )
-
-                            LazyColumn(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(max = 160.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                items(userProjects, key = { it.id }) { proj ->
-                                    val isSelected = activeSampleId == proj.id
-                                    Surface(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable {
-                                                onSelectProject(proj.id)
-                                                onDismiss()
-                                            },
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = if (isSelected) Color(0xFF1E293B) else StudioSurfaceCard,
-                                        border = androidx.compose.foundation.BorderStroke(
-                                            1.dp,
-                                            if (isSelected) StudioCyan else StudioBorder
-                                        )
-                                    ) {
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(10.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                                modifier = Modifier.weight(1f)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Movie,
-                                                    contentDescription = null,
-                                                    tint = if (isSelected) StudioCyan else Color.White.copy(alpha = 0.6f),
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                                Column {
-                                                    Text(
-                                                        text = proj.title,
-                                                        color = if (isSelected) StudioCyan else Color.White,
-                                                        fontSize = 12.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        maxLines = 1
-                                                    )
-                                                    Text(
-                                                        text = "${proj.durationMs / 1000}s • ${proj.aspectRatio.displayName}",
-                                                        color = Color.White.copy(alpha = 0.5f),
-                                                        fontSize = 10.sp
-                                                    )
-                                                }
-                                            }
-
-                                            IconButton(
-                                                onClick = { onDeleteProject(proj.id) },
-                                                modifier = Modifier.size(28.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.DeleteOutline,
-                                                    contentDescription = "Xóa",
-                                                    tint = StudioRed,
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                            Text(
+                                text = "Chọn video bất kỳ có trong điện thoại để dịch phụ đề",
+                                fontSize = 10.sp,
+                                color = StudioBgDark.copy(alpha = 0.85f)
+                            )
                         }
                     }
-                } else {
-                    // TAB 1: SAMPLES GALLERY
-                    Column(
+
+                    // Tùy chọn Nhập link URL hoặc Tạo thủ công
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        SampleVideoRepository.SAMPLES.forEach { sample ->
-                            val isSelected = activeSampleId == sample.id
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        onSelectSample(sample)
-                                        onDismiss()
-                                    }
-                                    .testTag("sample_item_${sample.id}"),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = if (isSelected) Color(0xFF1E293B) else StudioSurfaceCard
-                                ),
-                                border = androidx.compose.foundation.BorderStroke(
-                                    width = if (isSelected) 1.5.dp else 1.dp,
-                                    color = if (isSelected) StudioCyan else StudioBorder
-                                )
-                            ) {
-                                Row(
+                        OutlinedButton(
+                            onClick = { showUrlDialog = true },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("import_url_button"),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = StudioPurpleLight),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, StudioPurpleLight.copy(alpha = 0.6f)),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                        ) {
+                            Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Nhập link URL", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
+
+                        OutlinedButton(
+                            onClick = { showManualDialog = true },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("create_manual_project_button"),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White.copy(alpha = 0.85f)),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, StudioBorder),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Tạo khung trống", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+
+                    // DANH SÁCH VIDEO ĐÃ NẠP CỦA NGƯỜI DÙNG (NẾU CÓ)
+                    if (allProjects.isNotEmpty()) {
+                        Text(
+                            text = "Danh sách video của bạn (${allProjects.size}):",
+                            color = StudioCyan,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 240.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            items(allProjects, key = { it.id }) { proj ->
+                                val isSelected = activeSampleId == proj.id
+                                Card(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                        .clickable {
+                                            onSelectProject(proj.id)
+                                            onDismiss()
+                                        },
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (isSelected) Color(0xFF1E293B) else StudioSurfaceCardHover
+                                    ),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        width = if (isSelected) 1.5.dp else 0.8.dp,
+                                        color = if (isSelected) StudioCyan else StudioBorder
+                                    )
                                 ) {
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = StudioCyan.copy(alpha = 0.15f),
-                                        modifier = Modifier.size(42.dp)
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Icon(
-                                                imageVector = Icons.Default.PlayCircleOutline,
-                                                contentDescription = null,
-                                                tint = StudioCyan,
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                        }
-                                    }
-
-                                    Column(modifier = Modifier.weight(1f)) {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            modifier = Modifier.weight(1f)
                                         ) {
-                                            Surface(
-                                                shape = RoundedCornerShape(4.dp),
-                                                color = StudioAmber.copy(alpha = 0.2f)
-                                            ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Movie,
+                                                contentDescription = null,
+                                                tint = if (isSelected) StudioCyan else Color.White.copy(alpha = 0.6f),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Column {
                                                 Text(
-                                                    text = sample.badge,
-                                                    color = StudioAmber,
-                                                    fontSize = 9.sp,
+                                                    text = proj.title,
+                                                    color = if (isSelected) StudioCyan else Color.White,
+                                                    fontSize = 12.sp,
                                                     fontWeight = FontWeight.Bold,
-                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                                    maxLines = 1
+                                                )
+                                                Text(
+                                                    text = "${proj.durationMs / 1000}s • ${proj.aspectRatio.displayName}",
+                                                    color = Color.White.copy(alpha = 0.5f),
+                                                    fontSize = 10.sp
                                                 )
                                             }
-                                            Text(
-                                                text = "${sample.durationSeconds}s • ${sample.initialSegments.size} câu",
-                                                color = Color.White.copy(alpha = 0.5f),
-                                                fontSize = 11.sp
-                                            )
                                         }
 
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Text(
-                                            text = sample.title,
-                                            color = if (isSelected) StudioCyan else Color.White,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Text(
-                                            text = sample.description,
-                                            color = Color.White.copy(alpha = 0.6f),
-                                            fontSize = 11.sp,
-                                            maxLines = 1
-                                        )
-                                    }
-
-                                    if (isSelected) {
-                                        Icon(
-                                            imageVector = Icons.Default.Check,
-                                            contentDescription = "Đang chọn",
-                                            tint = StudioCyan,
-                                            modifier = Modifier.size(20.dp)
-                                        )
+                                        IconButton(
+                                            onClick = {
+                                                onDeleteProject(proj.id)
+                                                // Nếu vừa xóa video cuối cùng trong danh sách, đóng modal ngay lập tức
+                                                if (allProjects.size <= 1) {
+                                                    onDismiss()
+                                                }
+                                            },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.DeleteOutline,
+                                                contentDescription = "Xóa video",
+                                                tint = StudioRed,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -519,23 +379,26 @@ fun SampleVideoPickerSheet(
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        OutlinedButton(onClick = { showUrlDialog = false }) {
-                            Text("Hủy")
+                        OutlinedButton(
+                            onClick = { showUrlDialog = false },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Hủy", color = Color.White)
                         }
-                        Spacer(modifier = Modifier.width(8.dp))
                         Button(
                             onClick = {
                                 if (inputUrl.isNotBlank()) {
-                                    onImportUrl(inputUrl.trim(), inputTitle.trim().ifBlank { null })
+                                    onImportUrl(inputUrl.trim(), inputTitle.trim().ifEmpty { null })
                                     showUrlDialog = false
                                     onDismiss()
                                 }
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = StudioCyan, contentColor = StudioBgDark)
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = StudioCyan)
                         ) {
-                            Text("Tải & Dịch")
+                            Text("Tải Video", color = StudioBgDark, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -543,10 +406,10 @@ fun SampleVideoPickerSheet(
         }
     }
 
-    // Modal: Create Manual Blank Project
+    // Modal: Tạo Project Thủ công
     if (showManualDialog) {
-        var inputTitle by remember { mutableStateOf("Dự án dịch mới") }
-        var durationSec by remember { mutableIntStateOf(15) }
+        var manualTitle by remember { mutableStateOf("Video Dự Án Mới") }
+        var manualDuration by remember { mutableStateOf("30") }
         var isVertical by remember { mutableStateOf(true) }
 
         Dialog(onDismissRequest = { showManualDialog = false }) {
@@ -561,16 +424,30 @@ fun SampleVideoPickerSheet(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
-                        text = "Tạo Kịch Bản Dịch Mới",
+                        text = "Tạo khung video thủ công",
                         color = Color.White,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold
                     )
 
                     OutlinedTextField(
-                        value = inputTitle,
-                        onValueChange = { inputTitle = it },
-                        label = { Text("Tên dự án") },
+                        value = manualTitle,
+                        onValueChange = { manualTitle = it },
+                        label = { Text("Tiêu đề video") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = StudioCyan,
+                            unfocusedBorderColor = StudioBorder,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        )
+                    )
+
+                    OutlinedTextField(
+                        value = manualDuration,
+                        onValueChange = { manualDuration = it.filter { ch -> ch.isDigit() } },
+                        label = { Text("Thời lượng (giây)") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(
@@ -583,44 +460,46 @@ fun SampleVideoPickerSheet(
 
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("Tỷ lệ khung hình:", color = Color.White, fontSize = 12.sp)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(
-                                selected = isVertical,
-                                onClick = { isVertical = true },
-                                colors = RadioButtonDefaults.colors(selectedColor = StudioCyan)
-                            )
-                            Text("9:16 Dọc", color = Color.White, fontSize = 11.sp)
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(
-                                selected = !isVertical,
-                                onClick = { isVertical = false },
-                                colors = RadioButtonDefaults.colors(selectedColor = StudioCyan)
-                            )
-                            Text("16:9 Ngang", color = Color.White, fontSize = 11.sp)
-                        }
+                        RadioButton(
+                            selected = isVertical,
+                            onClick = { isVertical = true },
+                            colors = RadioButtonDefaults.colors(selectedColor = StudioCyan)
+                        )
+                        Text("Dọc 9:16 (TikTok/Shorts)", color = Color.White, fontSize = 12.sp)
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        RadioButton(
+                            selected = !isVertical,
+                            onClick = { isVertical = false },
+                            colors = RadioButtonDefaults.colors(selectedColor = StudioCyan)
+                        )
+                        Text("Ngang 16:9", color = Color.White, fontSize = 12.sp)
                     }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        OutlinedButton(onClick = { showManualDialog = false }) {
-                            Text("Hủy")
+                        OutlinedButton(
+                            onClick = { showManualDialog = false },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Hủy", color = Color.White)
                         }
-                        Spacer(modifier = Modifier.width(8.dp))
                         Button(
                             onClick = {
-                                onCreateManualProject(inputTitle.trim(), durationSec, isVertical)
+                                val dur = manualDuration.toIntOrNull() ?: 30
+                                onCreateManualProject(manualTitle.trim(), dur, isVertical)
                                 showManualDialog = false
                                 onDismiss()
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = StudioAmber, contentColor = StudioBgDark)
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = StudioCyan)
                         ) {
-                            Text("Tạo ngay")
+                            Text("Tạo", color = StudioBgDark, fontWeight = FontWeight.Bold)
                         }
                     }
                 }

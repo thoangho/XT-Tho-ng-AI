@@ -1,42 +1,165 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#0A0E1A"
-    android:padding="24dp">
+    android:fillViewport="true">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:gravity="center"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:padding="20dp">
 
-        <ProgressBar
-            android:id="@+id/exportProgressBar"
-            android:layout_width="64dp"
-            android:layout_height="64dp"
-            android:indeterminate="true" />
-
-        <TextView
-            android:id="@+id/exportTitleText"
-            android:layout_width="wrap_content"
+        <!-- ============================================================== -->
+        <!-- KHUNG XUẤT VIDEO HOÀN CHỈNH (ĐÃ XÓA BADGE / TAG "FFMPEG")     -->
+        <!-- ============================================================== -->
+        <LinearLayout
+            android:id="@+id/card_final_export"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:text="Đang xuất và đóng gói Video..."
-            android:textColor="#00E5FF"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+            android:layout_marginBottom="16dp"
+            android:background="@drawable/bg_card_export"
+            android:orientation="vertical"
+            android:padding="18dp">
 
-        <TextView
-            android:id="@+id/exportStatusText"
-            android:layout_width="wrap_content"
+            <!-- Header: Icon & Tiêu đề (Tuyệt đối không có badge/tag FFmpeg) -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <!-- Biểu tượng Video / Đồ họa hiện đại -->
+                <TextView
+                    android:layout_width="38dp"
+                    android:layout_height="38dp"
+                    android:background="#2600E5FF"
+                    android:gravity="center"
+                    android:text="🎬"
+                    android:textSize="18sp" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/tv_export_card_title"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Xuất Video Hoàn Chỉnh"
+                        android:textColor="#FFFFFF"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tv_export_specs"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="H.264 • Tối ưu phần cứng • Hòa âm đa luồng"
+                        android:textColor="#00E5FF"
+                        android:textSize="11sp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Thanh tiến trình xuất video -->
+            <ProgressBar
+                android:id="@+id/exportProgressBar"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="8dp"
+                android:layout_marginTop="16dp"
+                android:indeterminate="true"
+                android:progressDrawable="@android:drawable/progress_horizontal" />
+
+            <!-- Trạng thái kết xuất -->
+            <TextView
+                android:id="@+id/exportTitleText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="ĐANG XUẤT VIDEO HOÀN CHỈNH"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/exportStatusText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Đang mã hóa khung hình và đóng gói MP4..."
+                android:textColor="#A0ABC0"
+                android:textSize="12sp" />
+
+            <!-- Khung thông báo bảo vệ hệ thống: Giữ sáng màn hình & Khóa tương tác chạm -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:background="#162238"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="8dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🔒"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="Chế độ bảo vệ: Màn hình luôn sáng và chặn chạm để bảo vệ tiến trình."
+                    android:textColor="#00E5FF"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- ============================================================== -->
+        <!-- ĐÃ XÓA BỎ HOÀN TOÀN CARD "Quy trình Tự động hóa Toàn diện (4 Bước)"-->
+        <!-- ĐÃ XÓA SẠCH DÒNG VĂN BẢN "FFmpeg đa luồng tự động dọn RAM..."     -->
+        <!-- ============================================================== -->
+
+        <!-- Nút tải file đầu ra độc lập: Gọn gàng, trực quan -->
+        <LinearLayout
+            android:id="@+id/layout_export_actions"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="Chế độ bảo vệ render đang bật: Màn hình luôn sáng"
-            android:textColor="#A0ABC0"
-            android:textSize="14sp" />
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btn_export_srt"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                android:backgroundTint="#131B2E"
+                android:text="Tải .SRT"
+                android:textColor="#00E5FF"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btn_export_txt"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:backgroundTint="#131B2E"
+                android:text="Tải Kịch bản"
+                android:textColor="#C084FC"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </LinearLayout>
 
     </LinearLayout>
-
-</FrameLayout>
+</ScrollView>

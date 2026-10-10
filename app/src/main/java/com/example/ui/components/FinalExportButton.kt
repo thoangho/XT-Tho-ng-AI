@@ -154,17 +154,18 @@ fun FinalExportButton(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = StudioPurple.copy(alpha = 0.25f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, StudioPurpleLight.copy(alpha = 0.5f))
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .background(StudioCyan.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                            .border(1.dp, StudioCyan.copy(alpha = 0.4f), RoundedCornerShape(8.dp)),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "FFmpeg",
-                            color = StudioPurpleLight,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Black,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        Icon(
+                            imageVector = Icons.Default.Movie,
+                            contentDescription = null,
+                            tint = StudioCyan,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
 
@@ -197,7 +198,7 @@ fun FinalExportButton(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Tune,
-                            contentDescription = "Cấu hình FFmpeg",
+                            contentDescription = "Cấu hình xuất video",
                             tint = StudioCyan,
                             modifier = Modifier.size(15.dp)
                         )
@@ -216,7 +217,7 @@ fun FinalExportButton(
                 }
             }
 
-            // Expandable FFmpeg Configurations
+            // Expandable Configurations
             AnimatedVisibility(
                 visible = isSettingsExpanded,
                 enter = fadeIn() + expandVertically(),
@@ -233,7 +234,7 @@ fun FinalExportButton(
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Text(
-                            text = "Tham số tối ưu hóa FFmpeg (Chống quá tải & Tăng tốc):",
+                            text = "Tham số tối ưu hóa kết xuất (Chống quá tải & Tăng tốc):",
                             color = Color.White.copy(alpha = 0.7f),
                             fontSize = 11.sp
                         )
@@ -408,7 +409,7 @@ fun FinalExportButton(
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Text(
-                                    text = statusMessage.ifBlank { "Đang xử lý FFmpeg..." },
+                                    text = statusMessage.ifBlank { "Đang xử lý kết xuất video..." },
                                     color = StudioCyan,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium,

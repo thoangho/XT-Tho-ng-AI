@@ -26,10 +26,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.MovieFilter
-import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -55,34 +53,28 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.ui.theme.StudioAmber
-import com.example.ui.theme.StudioBgDark
 import com.example.ui.theme.StudioCyan
 import com.example.ui.theme.StudioGreen
 import com.example.ui.theme.StudioPurpleLight
 import com.example.util.BatteryInfo
 
 /**
- * FFmpegRenderOverlayDialog - Màn hình Overlay phủ kín toàn bộ giao diện khi Render Video:
- *
- * 1. BỎ HOÀN TOÀN GIỚI HẠN THỜI GIAN 5 PHÚT (TIMEOUT REMOVED):
- *    Tiến trình render FFmpeg chạy liên tục không bị giới hạn thời gian cho đến khi hoàn thành.
- *
- * 2. KHÓA TƯƠNG TÁC GIAO DIỆN VÀ GIỮ SÁNG MÀN HÌNH (TOUCH LOCK & OVERLAY):
- *    - isCancelable = false (Chống vô ý chạm ra ngoài hoặc bấm back)
- *    - window.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) (Chặn chạm vào các nút phía dưới)
- *    - window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) (Giữ màn hình luôn sáng)
- *    - Khi render xong hoặc bấm Hủy: gỡ bỏ cờ và tắt Overlay.
+ * Overlay Dialog Bảo vệ tiến trình Lồng tiếng AI (TTS Processing):
+ * 1. Chặn toàn bộ thao tác bấm nhầm màn hình (FLAG_NOT_TOUCHABLE).
+ * 2. Giữ màn hình không tự tắt (FLAG_KEEP_SCREEN_ON).
+ * 3. Hiển thị ProgressBar & Tỷ lệ % tiến độ đọc real-time (ví dụ: "Đang tạo giọng đọc 3/9 câu - 33%").
+ * 4. Cho phép bấm nút "Dừng đọc lồng tiếng" nếu muốn hủy.
  */
 @Composable
-fun FFmpegRenderOverlayDialog(
+fun VoiceDubbingOverlayDialog(
     progress: Float,
     statusMessage: String,
-    onCancel: () -> Unit,
+    onStopDubbing: () -> Unit,
     batteryInfo: BatteryInfo? = null
 ) {
     val context = LocalContext.current
 
-    // Quản lý cờ WindowManager: Khóa chạm nền và Giữ sáng màn hình
+    // Tự động kích hoạt FLAG_KEEP_SCREEN_ON & FLAG_NOT_TOUCHABLE khi bắt đầu, gỡ cờ khi kết thúc/hủy
     DisposableEffect(Unit) {
         val window = (context as? Activity)?.window
         window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -94,7 +86,7 @@ fun FFmpegRenderOverlayDialog(
         }
     }
 
-    val infiniteTransition = rememberInfiniteTransition(label = "render_rotation")
+    val infiniteTransition = rememberInfiniteTransition(label = "tts_pulse")
     val rotation by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
@@ -108,7 +100,7 @@ fun FFmpegRenderOverlayDialog(
     val percentInt = (progress * 100).toInt().coerceIn(0, 100)
 
     Dialog(
-        onDismissRequest = { /* Chặn đóng khi chạm ra ngoài hoặc phím back */ },
+        onDismissRequest = { /* Chặn đóng ngoài ý muốn */ },
         properties = DialogProperties(
             dismissOnBackPress = false,
             dismissOnClickOutside = false,
@@ -118,8 +110,8 @@ fun FFmpegRenderOverlayDialog(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFA0A0E1A))
-                .testTag("ffmpeg_render_overlay"),
+                .background(Color(0xF00A0E1A))
+                .testTag("voice_dubbing_overlay"),
             contentAlignment = Alignment.Center
         ) {
             Surface(
@@ -140,45 +132,45 @@ fun FFmpegRenderOverlayDialog(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    // Header Icon với hiệu ứng quay nhẹ
+                    // Header Icon
                     Box(
                         modifier = Modifier
-                            .size(72.dp)
+                            .size(68.dp)
                             .background(StudioCyan.copy(alpha = 0.12f), CircleShape)
                             .border(1.dp, StudioCyan.copy(alpha = 0.4f), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.MovieFilter,
-                            contentDescription = "Rendering",
+                            imageVector = Icons.Default.RecordVoiceOver,
+                            contentDescription = "Voice Dubbing",
                             tint = StudioCyan,
                             modifier = Modifier
-                                .size(36.dp)
-                                .rotate(rotation)
+                                .size(34.dp)
+                                .rotate(rotation * 0.2f)
                         )
                     }
 
-                    // Tiêu đề & phụ đề
+                    // Tiêu đề
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
-                            text = "ĐANG XUẤT VIDEO HOÀN CHỈNH",
+                            text = "ĐANG TẠO LỒNG TIẾNG AI",
                             color = Color.White,
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center
                         )
                         Text(
-                            text = "Tiến trình chạy liên tục không giới hạn thời gian",
-                            color = StudioGreen,
+                            text = "Bộ máy Edge-TTS chuyển ngữ sang âm thanh tự nhiên",
+                            color = StudioCyan,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium
                         )
                     }
 
-                    // Thanh tiến trình & phần trăm
+                    // ProgressBar & Tỷ lệ % tiến độ đọc real-time
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -189,7 +181,7 @@ fun FFmpegRenderOverlayDialog(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Tiến độ xử lý",
+                                text = "Tiến độ tạo giọng đọc",
                                 color = Color.White.copy(alpha = 0.8f),
                                 fontSize = 12.sp
                             )
@@ -212,7 +204,7 @@ fun FFmpegRenderOverlayDialog(
                         )
                     }
 
-                    // Thông điệp trạng thái chi tiết
+                    // TextView hiển thị trạng thái câu thoại real-time
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
@@ -232,15 +224,16 @@ fun FFmpegRenderOverlayDialog(
                                 color = StudioCyan
                             )
                             Text(
-                                text = if (statusMessage.isNotBlank()) statusMessage else "Đang mã hóa khung hình và hòa âm phụ đề...",
+                                text = if (statusMessage.isNotBlank()) statusMessage else "Đang chuẩn bị khởi tạo giọng đọc...",
                                 color = Color.White.copy(alpha = 0.9f),
-                                fontSize = 12.sp,
-                                lineHeight = 16.sp
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                lineHeight = 17.sp
                             )
                         }
                     }
 
-                    // Huy hiệu thông báo Touch Lock & Keep Screen On
+                    // Huy hiệu bảo vệ
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp),
@@ -260,7 +253,7 @@ fun FFmpegRenderOverlayDialog(
                                 modifier = Modifier.size(16.dp)
                             )
                             Text(
-                                text = "Khóa tương tác & Giữ sáng màn hình đang bật để chống gián đoạn",
+                                text = "Màn hình luôn sáng & Chặn chạm để tránh bấm nhầm",
                                 color = StudioCyan,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Medium
@@ -285,12 +278,12 @@ fun FFmpegRenderOverlayDialog(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Warning,
-                                    contentDescription = "Low Battery",
+                                    contentDescription = "Pin yếu",
                                     tint = StudioAmber,
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Text(
-                                    text = "Pin còn ${batteryInfo.level}%. Hãy cắm sạc để giữ tiến trình render an toàn!",
+                                    text = "Pin ${batteryInfo.level}%. Cắm sạc để duy trì ổn định!",
                                     color = StudioAmber,
                                     fontSize = 11.sp
                                 )
@@ -298,15 +291,15 @@ fun FFmpegRenderOverlayDialog(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
 
-                    // Nút Hủy tiến trình
+                    // Nút Dừng đọc lồng tiếng
                     OutlinedButton(
-                        onClick = onCancel,
+                        onClick = onStopDubbing,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(44.dp)
-                            .testTag("btn_cancel_render"),
+                            .testTag("btn_stop_dubbing_overlay"),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = Color(0xFFFF5252)
                         ),
@@ -315,12 +308,12 @@ fun FFmpegRenderOverlayDialog(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = "Hủy",
+                            contentDescription = "Dừng",
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Hủy xuất video",
+                            text = "Dừng đọc lồng tiếng",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold
                         )

@@ -328,16 +328,21 @@ object VideoExportService {
         val fallbackSource = File(context.filesDir, "sample_videos/$sampleAssetCandidate")
         if (!fallbackSource.exists() || fallbackSource.length() < 1000) {
             fallbackSource.parentFile?.mkdirs()
+            var assetLoaded = false
             try {
-                context.assets.open("sample_videos/$sampleAssetCandidate").use { input ->
-                    FileOutputStream(fallbackSource).use { output ->
-                        input.copyTo(output)
+                val list = context.assets.list("sample_videos") ?: emptyArray()
+                if (list.contains(sampleAssetCandidate)) {
+                    context.assets.open("sample_videos/$sampleAssetCandidate").use { input ->
+                        FileOutputStream(fallbackSource).use { output ->
+                            input.copyTo(output)
+                        }
                     }
+                    assetLoaded = fallbackSource.exists() && fallbackSource.length() > 1000
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Could not open asset $sampleAssetCandidate: ${e.message}")
+                Log.d(TAG, "Asset $sampleAssetCandidate not found in assets, creating generated fallback video: ${e.message}")
             }
-            if (!fallbackSource.exists() || fallbackSource.length() < 1000) {
+            if (!assetLoaded) {
                 createFallbackSampleVideo(fallbackSource, project.durationMs.coerceIn(5000L, 20000L))
             }
         }
@@ -596,11 +601,13 @@ object VideoExportService {
                         audioBufferInfo.size = sampleSize
                         audioBufferInfo.presentationTimeUs = currentPts
                         audioBufferInfo.flags = extractor.sampleFlags
-                        try {
-                            muxer.writeSampleData(muxerAudioTrack, audioBuffer, audioBufferInfo)
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Audio sample write warning: ${e.message}")
-                            break
+                        if ((extractor.sampleFlags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0) {
+                            try {
+                                muxer.writeSampleData(muxerAudioTrack, audioBuffer, audioBufferInfo)
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Audio sample write warning: ${e.message}")
+                                break
+                            }
                         }
                         extractor.advance()
                     }
@@ -640,9 +647,17 @@ object VideoExportService {
                     } else if (outIndex >= 0) {
                         val encodedBuffer = encoder.getOutputBuffer(outIndex)
                         if (encodedBuffer != null && bufferInfo.size > 0 && isMuxerStarted) {
-                            encodedBuffer.position(bufferInfo.offset)
-                            encodedBuffer.limit(bufferInfo.offset + bufferInfo.size)
-                            muxer.writeSampleData(muxerVideoTrack, encodedBuffer, bufferInfo)
+                            // MediaMuxer gets codec config from addTrack(encoder.outputFormat).
+                            // Writing BUFFER_FLAG_CODEC_CONFIG produces "E/MPEG4Writer: Already have codec specific data".
+                            if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0) {
+                                encodedBuffer.position(bufferInfo.offset)
+                                encodedBuffer.limit(bufferInfo.offset + bufferInfo.size)
+                                try {
+                                    muxer.writeSampleData(muxerVideoTrack, encodedBuffer, bufferInfo)
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "Video sample write warning: ${e.message}")
+                                }
+                            }
                         }
                         encoder.releaseOutputBuffer(outIndex, false)
                         if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
@@ -902,9 +917,15 @@ object VideoExportService {
                 } else if (outIdx >= 0) {
                     val outBuf = encoder.getOutputBuffer(outIdx)
                     if (outBuf != null && bufferInfo.size > 0 && isMuxerStarted) {
-                        outBuf.position(bufferInfo.offset)
-                        outBuf.limit(bufferInfo.offset + bufferInfo.size)
-                        muxer.writeSampleData(audioTrack, outBuf, bufferInfo)
+                        if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0) {
+                            outBuf.position(bufferInfo.offset)
+                            outBuf.limit(bufferInfo.offset + bufferInfo.size)
+                            try {
+                                muxer.writeSampleData(audioTrack, outBuf, bufferInfo)
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Audio encode sample write warning: ${e.message}")
+                            }
+                        }
                     }
                     encoder.releaseOutputBuffer(outIdx, false)
                     if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {

@@ -35,7 +35,7 @@ import com.example.data.network.ApiKeyManager
 import com.example.util.BatteryHelper
 import com.example.util.BatteryInfo
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
+import android.widget.Toast
 import java.io.File
 
 data class StudioUiState(
@@ -99,6 +99,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     private var renderJob: Job? = null
     private var playbackJob: Job? = null
+    private var dubbingGenerationJob: Job? = null
     private var lastSpokenSegmentId: Long? = null
 
     init {
@@ -505,9 +506,24 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             if (remaining.isNotEmpty()) {
                 loadProject(remaining.first().id)
             } else {
-                loadSample(SampleVideoRepository.SAMPLES.first())
+                // Khi danh sách video = TRỐNG: Chuyển về Trang chủ trống, tuyệt đối không tự phát hay nạp video mẫu
+                _uiState.update {
+                    it.copy(
+                        activeProject = null,
+                        hasVideoLoaded = false,
+                        segments = emptyList(),
+                        currentPlaybackTimeMs = 0L,
+                        isPlaying = false,
+                        isDubbingPlaying = false,
+                        isDubbingGenerating = false,
+                        isSubtitlesConfirmed = false,
+                        translationSuccessful = false,
+                        selectedTab = 0
+                    )
+                }
             }
-            showNotice("Đã xóa dự án thành công.")
+            Toast.makeText(getApplication(), "Đã xóa video thành công.", Toast.LENGTH_SHORT).show()
+            showNotice("Đã xóa video thành công.")
         }
     }
 
@@ -885,54 +901,93 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun startAiVoiceDubbing() {
         val project = _uiState.value.activeProject
         if (project == null) {
+            Toast.makeText(getApplication(), "Vui lòng chọn hoặc nạp video trước!", Toast.LENGTH_SHORT).show()
             showNotice("Vui lòng chọn hoặc nạp video trước!")
             return
         }
 
         val approvedSegs = _uiState.value.segments.filter { it.isApproved && it.vietnameseText.isNotBlank() }
         if (approvedSegs.isEmpty()) {
+            Toast.makeText(getApplication(), "Chưa có phụ đề tiếng Việt nào được duyệt!", Toast.LENGTH_SHORT).show()
             showNotice("⚠️ Chưa có phụ đề tiếng Việt nào được duyệt! Vui lòng xác nhận phụ đề ở tab 'Bảng phụ đề' trước khi đọc.")
             _uiState.update { it.copy(selectedTab = 1) }
             return
         }
 
+        dubbingGenerationJob?.cancel()
         playbackJob?.cancel()
         dubbingService.stopSpeaking()
         lastSpokenSegmentId = null
 
-        // Tự động tổng hợp sẵn file âm thanh nền phục vụ xuất video
-        viewModelScope.launch {
-            for (seg in approvedSegs) {
-                val durationMs = (seg.endTimeMs - seg.startTimeMs).coerceAtLeast(500L)
-                dubbingService.synthesizeSegmentToFile(
-                    text = seg.vietnameseText,
-                    config = project.dubbingConfig,
-                    segmentId = seg.id,
-                    durationMs = durationMs
+        val totalCount = approvedSegs.size
+        dubbingGenerationJob = viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isDubbingGenerating = true,
+                    isDubbingPlaying = false,
+                    dubbingGenerationProgress = 0.05f,
+                    dubbingStatusMessage = "Đang tạo giọng đọc 1/$totalCount câu - 5%"
                 )
             }
-        }
 
-        _uiState.update {
-            it.copy(
-                isDubbingPlaying = true,
-                isPlaying = true,
-                currentPlaybackTimeMs = 0L
-            )
+            try {
+                val dubbedAudioFiles = dubbingService.synthesizeSegmentsInBatches(
+                    segments = approvedSegs,
+                    config = project.dubbingConfig
+                ) { pct, msg ->
+                    val currentCount = (pct * totalCount).toInt().coerceIn(1, totalCount)
+                    val percentInt = (pct * 100).toInt().coerceIn(5, 100)
+                    _uiState.update {
+                        it.copy(
+                            dubbingGenerationProgress = pct,
+                            dubbingStatusMessage = "Đang tạo giọng đọc $currentCount/$totalCount câu - $percentInt%"
+                        )
+                    }
+                }
+
+                _uiState.update {
+                    it.copy(
+                        isDubbingGenerating = false,
+                        isDubbingPlaying = false,
+                        dubbingGenerationProgress = 1.0f,
+                        dubbingStatusMessage = "Hoàn tất tạo giọng đọc $totalCount câu!"
+                    )
+                }
+
+                Toast.makeText(
+                    getApplication(),
+                    "Lồng tiếng AI hoàn tất! Đã tạo thành công ${dubbedAudioFiles.size} câu thoại.",
+                    Toast.LENGTH_LONG
+                ).show()
+                showNotice("🎉 Lồng tiếng AI hoàn tất! Đã tạo thành công ${dubbedAudioFiles.size} tệp âm thanh.")
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isDubbingGenerating = false,
+                        isDubbingPlaying = false,
+                        dubbingGenerationProgress = 0f,
+                        dubbingStatusMessage = "Thất bại khi tạo lồng tiếng"
+                    )
+                }
+                val errMsg = "Thất bại khi tạo lồng tiếng: ${e.localizedMessage ?: "Vui lòng thử lại"}"
+                Toast.makeText(getApplication(), errMsg, Toast.LENGTH_LONG).show()
+                showNotice(errMsg)
+            }
         }
-        startPlaybackLoop()
-        showNotice("🎙️ AI đang bắt đầu đọc lồng tiếng ${approvedSegs.size} câu phụ đề Tiếng Việt đã chốt...")
     }
 
     fun stopAiVoiceDubbing() {
+        dubbingGenerationJob?.cancel()
         playbackJob?.cancel()
         dubbingService.stopSpeaking()
         _uiState.update {
             it.copy(
+                isDubbingGenerating = false,
                 isDubbingPlaying = false,
-                isPlaying = false
+                dubbingStatusMessage = "Đã dừng lồng tiếng"
             )
         }
+        Toast.makeText(getApplication(), "Đã dừng đọc lồng tiếng.", Toast.LENGTH_SHORT).show()
         showNotice("Đã dừng đọc lồng tiếng.")
     }
 
@@ -1146,7 +1201,19 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         ?: SampleVideoRepository.SAMPLES.first()
                     SampleVideoHelper.getRawSourceSegments(sample)
                 } else {
-                    createContextualChineseSegments(project)
+                    emptyList()
+                }
+
+                if (rawSource.isEmpty()) {
+                    _uiState.update {
+                        it.copy(
+                            isProcessing = false,
+                            errorAlertTitle = "Chưa có phụ đề",
+                            errorAlertMessage = "Video chưa có dữ liệu phụ đề để dịch. Vui lòng nạp tệp phụ đề .SRT hoặc nhập video có kèm phụ đề."
+                        )
+                    }
+                    showNotice("⚠️ Chưa có phụ đề trong video! Vui lòng nạp tệp .SRT trước.")
+                    return@launch
                 }
 
                 addLog("[1/2] Phân tích luồng câu thoại theo thời lượng video...")
@@ -1244,104 +1311,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    private fun createContextualChineseSegments(project: VideoProject): List<SubtitleSegment> {
-        val title = project.title
-        val durationMs = project.durationMs.coerceAtLeast(3000L)
-        val isFood = title.contains("美食") || title.contains("吃") || title.contains("火锅") || title.contains("做菜") || title.contains("街头")
-        val isTech = title.contains("科技") || title.contains("手机") || title.contains("测评") || title.contains("数码") || title.contains("折叠")
-        val isComedy = title.contains("搞笑") || title.contains("办公") || title.contains("同事") || title.contains("职场") || title.contains("笑")
-        val isVlog = title.contains("vlog", ignoreCase = true) || title.contains("日常") || title.contains("生活") || title.contains("旅游")
-
-        val speechTemplates = when {
-            isFood -> listOf(
-                "哇！",
-                "今天带大家来打卡这家在本地超级火爆的特色美食小店。",
-                "快看！",
-                "看看这个招牌特色，刚端上来就香气扑鼻，色泽特别诱人。",
-                "太绝了！",
-                "食材特别新鲜扎实，入口软嫩多汁，口感层次非常丰富。",
-                "对！",
-                "一定要搭配这个秘制特调酱汁，一口下去真的太满足了。",
-                "绝了！",
-                "喜欢地道特色美食的朋友们，赶紧点赞收藏起来吧！"
-            )
-            isTech -> listOf(
-                "来了！",
-                "今天带大家来深度上手体验这款备受瞩目的全新旗舰产品。",
-                "快看！",
-                "整机的工艺质感非常扎实轻薄，握在手里的手感超出预期。",
-                "太牛了！",
-                "屏幕显示色彩极其细腻鲜亮，高刷流畅度表现非常丝滑。",
-                "对！",
-                "核心性能与日常续航表现也非常稳定，完全满足重度使用需求。",
-                "真的绝了！",
-                "总体来说综合产品力非常均衡，感兴趣的小伙伴可以多多关注！"
-            )
-            isComedy -> listOf(
-                "天呐！",
-                "今天在办公室又遇到了一个特别离谱又好笑的奇葩瞬间。",
-                "快看！",
-                "本来以为只是一个简单的小任务，结果接下来的一幕直接看呆了。",
-                "真的假的？",
-                "看到这个神操作的一瞬间，整个办公室的人全都忍不住笑翻了。",
-                "太真实了！",
-                "简直就是当代职场人的真实写照，大家有没有遇到过类似情况？",
-                "笑不活了！",
-                "觉得搞笑解压的朋友记得点个关注，每天带给你更多欢乐！"
-            )
-            isVlog -> listOf(
-                "哈喽大家好！",
-                "欢迎来到今天的美好生活日常记录，记录属于自己的惬意时光。",
-                "走！",
-                "今天天气特别晴朗舒适，带大家一起去探索一个很有趣的地方。",
-                "太美了！",
-                "沿途的风景随手一拍都格外治愈，微风吹过来感觉整个人都放松了。",
-                "对！",
-                "顺路拐进这家很有氛围感的小咖啡馆，坐下来好好享受当下的宁静。",
-                "真舒服！",
-                "生活的小确幸往往就在这些温暖的细节里，我们下期视频再见！"
-            )
-            else -> listOf(
-                "哈喽大家好！",
-                if (title.isNotBlank()) "今天来和大家聊聊关于 $title 的精彩内容。" else "今天来和大家详细分享一个非常实用有趣的精彩内容。",
-                "快看！",
-                "你看这个细节其实很有讲究，掌握了窍门就会觉得特别轻松。",
-                "太棒了！",
-                "一步一步跟着操作，不仅效率大幅提升，而且效果立竿见影。",
-                "对！",
-                "很多朋友可能平时容易忽略这个关键点，赶紧记在小本本上。",
-                "赶紧试试！",
-                "如果觉得今天的内容对你有帮助，欢迎点赞支持，下期更精彩！"
-            )
-        }
-
-        val segments = mutableListOf<SubtitleSegment>()
-        var currentTime = 300L
-        var idx = 1
-        var phraseIdx = 0
-
-        while (currentTime + 1000L < durationMs && idx <= 40) {
-            val phrase = speechTemplates[phraseIdx % speechTemplates.size]
-            val duration = (phrase.length * 180L).coerceIn(900L, 3800L)
-            val end = (currentTime + duration).coerceAtMost(durationMs - 200L)
-
-            segments.add(
-                SubtitleSegment(
-                    projectId = project.id,
-                    indexNumber = idx,
-                    startTimeMs = currentTime,
-                    endTimeMs = end,
-                    originalChinese = phrase,
-                    vietnameseText = ""
-                )
-            )
-
-            currentTime = end + 250L
-            idx++
-            phraseIdx++
-        }
-        return segments
-    }
+    // Đã xóa bỏ hoàn toàn hàm createContextualChineseSegments và toàn bộ dữ liệu mẫu cứng (Lỗi 4)
 
     /**
      * Luồng 1 (Alias): Chạy dịch phụ đề độc lập (Whisper AI + Gemini AI -> Tự động lưu .SRT/.TXT)
@@ -1459,15 +1429,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         val segments = if (directExport) emptyList() else _uiState.value.segments
-        if (!directExport && (segments.isEmpty() || !_uiState.value.translationSuccessful)) {
-            _uiState.update {
-                it.copy(
-                    errorAlertTitle = "Chưa có phụ đề dịch",
-                    errorAlertMessage = "Video chưa có phụ đề được dịch. Vui lòng nhấn 'Dịch video' hoặc chọn xuất trực tiếp video gốc."
-                )
-            }
-            return
-        }
+        val hasSubtitlesOrDubbing = segments.isNotEmpty() && segments.any { it.vietnameseText.isNotBlank() }
 
         renderJob?.cancel()
         renderJob = viewModelScope.launch {
@@ -1475,7 +1437,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 it.copy(
                     isRenderingFFmpeg = true,
                     ffmpegRenderProgress = 0.05f,
-                    ffmpegStatusMessage = if (directExport) "Khởi tạo tiến trình xuất video trực tiếp..." else "Khởi tạo tiến trình xuất video XThoáng AI (Hòa âm giọng đọc + Che phụ đề cũ)..."
+                    ffmpegStatusMessage = if (hasSubtitlesOrDubbing && !directExport) {
+                        "Khởi tạo tiến trình xuất video XThoáng AI (Hòa âm giọng đọc + Che phụ đề cũ)..."
+                    } else {
+                        "Khởi tạo tiến trình xuất video trực tiếp..."
+                    }
                 )
             }
 
@@ -1496,10 +1462,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     }
                 }
 
-                val successMsg = if (directExport) {
-                    "Xuất video gốc trực tiếp thành công! Video MP4 đã được lưu vào máy."
-                } else {
+                val successMsg = if (hasSubtitlesOrDubbing && !directExport) {
                     "Xuất video thành công! Video MP4 đã được hòa âm hoàn chỉnh (giọng đọc lồng tiếng + nhạc nền) và nhúng phụ đề Tiếng Việt."
+                } else {
+                    "Xuất video hoàn tất thành công! Video MP4 đã được lưu vào máy."
                 }
 
                 _uiState.update {

@@ -5,52 +5,98 @@
     android:layout_height="match_parent"
     android:background="#0A0E1A">
 
-    <!-- Top Action Bar -->
-    <LinearLayout
+    <!-- Top Action Bar (RelativeLayout: Xếp Logo, Tên App và Badge Pin song song bên phải, không đè lên logo hay thương hiệu) -->
+    <RelativeLayout
         android:id="@+id/top_bar_layout"
         android:layout_width="match_parent"
         android:layout_height="56dp"
         android:layout_alignParentTop="true"
         android:background="#121826"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
         android:paddingHorizontal="16dp">
 
-        <TextView
-            android:id="@+id/tv_app_title"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="@string/app_name"
-            android:textColor="#00E5FF"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-
-        <!-- Nút Dịch Phụ Đề (Mặc định ẩn GONE khi chưa có video) -->
-        <Button
-            android:id="@+id/btn_translate_subtitles"
+        <!-- Cụm Brand góc trái: Logo -> Tên app -> Badge Pin xếp nối tiếp song song -->
+        <LinearLayout
+            android:id="@+id/layout_brand_cluster"
             android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:layout_marginEnd="8dp"
-            android:backgroundTint="#8B5CF6"
-            android:text="Dịch Phụ Đề"
-            android:textColor="#FFFFFF"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:visibility="gone" />
+            android:layout_height="match_parent"
+            android:layout_alignParentStart="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-        <!-- Nút Xuất video (Mặc định ẩn GONE khi chưa có video) -->
-        <Button
-            android:id="@+id/btn_export_video"
+            <!-- Logo ứng dụng XT ở góc trái -->
+            <TextView
+                android:id="@+id/tvAppLogo"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:background="@drawable/bg_logo_badge"
+                android:gravity="center"
+                android:text="XT"
+                android:textColor="#00E5FF"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <!-- Tên ứng dụng "XT Thoáng AI" -->
+            <TextView
+                android:id="@+id/tvAppName"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="XT Thoáng AI"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <!-- Badge Pin (🔋 11%): Nằm song song bên phải Tên app, tuyệt đối không đè tên thương hiệu (Lỗi 2) -->
+            <TextView
+                android:id="@+id/tvBatteryBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_badge_battery"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="3dp"
+                android:text="🔋 11%"
+                android:textColor="#10B981"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- Cụm Nút hành động góc phải -->
+        <LinearLayout
+            android:id="@+id/layout_top_actions"
             android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:backgroundTint="#10B981"
-            android:text="Xuất video"
-            android:textColor="#0A0E1A"
-            android:textSize="12sp"
-            android:textStyle="bold"
-            android:visibility="gone" />
-    </LinearLayout>
+            android:layout_height="match_parent"
+            android:layout_alignParentEnd="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <!-- Nút Dịch Phụ Đề (Mặc định ẩn GONE khi chưa có video) -->
+            <Button
+                android:id="@+id/btn_translate_subtitles"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_marginEnd="8dp"
+                android:backgroundTint="#8B5CF6"
+                android:text="Dịch Phụ Đề"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+            <!-- Nút Xuất video (Mặc định ẩn GONE khi chưa có video) -->
+            <Button
+                android:id="@+id/btn_export_video"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:backgroundTint="#10B981"
+                android:text="Xuất video"
+                android:textColor="#0A0E1A"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+        </LinearLayout>
+
+    </RelativeLayout>
 
     <!-- Compose Container hiển thị toàn bộ giao diện tương tác động -->
     <androidx.compose.ui.platform.ComposeView
@@ -66,31 +112,19 @@
         android:layout_height="wrap_content"
         android:layout_centerInParent="true"
         android:orientation="vertical"
-        android:padding="24dp"
         android:visibility="gone">
 
-        <!-- Nút Chọn hoặc Tải Video -->
         <Button
-            android:id="@+id/btn_select_video"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:background="@drawable/bg_btn_select_video"
-            android:text="+ Chọn hoặc Tải Video"
-            android:textColor="#0A0E1A"
-            android:textSize="14sp"
-            android:textStyle="bold" />
+            android:id="@+id/btn_pick_or_upload_video"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="+ Chọn hoặc Tải Video" />
 
-        <!-- Nút Liên hệ ADMIN: Nằm ngay dưới nút chọn video, viền Cyan, nền trong suốt -->
         <Button
             android:id="@+id/btn_contact_admin"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:layout_marginTop="12dp"
-            android:background="@drawable/bg_btn_contact_admin"
-            android:text="💬 Liên hệ ADMIN"
-            android:textColor="#00E5FF"
-            android:textSize="14sp"
-            android:textStyle="bold" />
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Liên hệ ADMIN" />
     </LinearLayout>
 
 </RelativeLayout>

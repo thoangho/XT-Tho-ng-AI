@@ -83,6 +83,7 @@ import com.example.ui.components.LowBatteryWarningBanner
 import com.example.ui.components.LowBatteryExportWarningDialog
 import com.example.ui.components.ExportStudioCard
 import com.example.ui.components.FFmpegRenderOverlayDialog
+import com.example.ui.components.VoiceDubbingOverlayDialog
 import com.example.ui.components.MaskControlsCard
 import com.example.ui.components.ProcessingProgressDialog
 import com.example.ui.components.SampleVideoPickerSheet
@@ -189,17 +190,15 @@ fun StudioMainScreen(
                                 softWrap = false
                             )
                         }
+
+                        // Badge Pin: Ràng buộc xếp song song bên phải Tên app, tuyệt đối không đè tên thương hiệu (Lỗi 2)
+                        BatteryIndicatorBadge(
+                            batteryInfo = state.batteryInfo,
+                            onClick = { viewModel.refreshBatteryStatus() }
+                        )
                     }
                 },
                 actions = {
-                    // Huy hiệu hiển thị mức pin và trạng thái sạc
-                    BatteryIndicatorBadge(
-                        batteryInfo = state.batteryInfo,
-                        onClick = { viewModel.refreshBatteryStatus() }
-                    )
-
-                    Spacer(modifier = Modifier.width(4.dp))
-
                     // API Key Setting Icon Button
                     IconButton(
                         onClick = { viewModel.openApiKeyDialog() },
@@ -213,43 +212,9 @@ fun StudioMainScreen(
                         )
                     }
 
-                    // Nút '+ Thêm' trên Header đã được vô hiệu hóa hiển thị (tương đương android:visibility="gone")
-                    // nhằm trả lại không gian chiều ngang cho thương hiệu 'XT Thoáng AI' bên trái,
-                    // tránh trùng lặp vì đã có nút '+ Thêm video' ở phần nội dung bên dưới.
-                    /*
-                    Button(
-                        onClick = { showSamplePicker = true },
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = StudioSurfaceCard,
-                            contentColor = StudioCyan
-                        ),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, StudioCyan.copy(alpha = 0.6f)),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                        modifier = Modifier
-                            .height(32.dp)
-                            .padding(end = 3.dp)
-                            .testTag("open_sample_picker_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "Thêm",
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Text(
-                            text = "Thêm",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
-                    */
-
                     // Hiển thị 2 nút 'Dịch Phụ Đề' và 'Xuất video' CHỈ KHI đã nạp/chọn video thành công
-                    // Nếu CHƯA có video (trạng thái mặc định khi vừa mở app): Ẩn hoàn toàn (visibility = GONE)
-                    val hasVideo = state.hasVideoLoaded || state.activeProject != null
+                    // Nếu CHƯA có video (trạng thái mặc định khi vừa mở app hoặc sau khi xóa video): Ẩn hoàn toàn (visibility = GONE)
+                    val hasVideo = state.hasVideoLoaded && state.activeProject != null
 
                     if (hasVideo) {
                         // Core Translation Button (Whisper + Gemini AI with error check)
@@ -649,7 +614,7 @@ fun StudioMainScreen(
                             )
 
                             Text(
-                                text = "Hệ thống đã sẵn sàng cho phiên làm việc mới. Vui lòng thêm video từ máy hoặc chọn video mẫu để bắt đầu.",
+                                text = "Hệ thống đã sẵn sàng cho phiên làm việc mới. Vui lòng thêm video từ thiết bị của bạn để bắt đầu.",
                                 color = Color.White.copy(alpha = 0.72f),
                                 fontSize = 13.sp,
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -979,6 +944,13 @@ fun StudioMainScreen(
         )
     }
 
+    // Tự động đóng Modal chọn video nếu danh sách dự án rỗng và không có video đang nạp (Lỗi 5)
+    LaunchedEffect(state.allProjects.size, state.activeProject) {
+        if (state.allProjects.isEmpty() && state.activeProject == null) {
+            showSamplePicker = false
+        }
+    }
+
     // Modal Hộp thoại Cảnh báo Pin yếu trước khi bắt đầu Render Video (Bảo vệ render video dài)
     if (state.showLowBatteryExportWarningDialog) {
         LowBatteryExportWarningDialog(
@@ -988,7 +960,17 @@ fun StudioMainScreen(
         )
     }
 
-    // Modal Overlay Khóa tương tác toàn màn hình & Giữ sáng màn hình khi Render FFmpeg (Timeout Removed)
+    // Modal Overlay Khóa tương tác toàn màn hình & Giữ sáng màn hình khi Lồng tiếng AI (Lỗi 1)
+    if (state.isDubbingGenerating) {
+        VoiceDubbingOverlayDialog(
+            progress = state.dubbingGenerationProgress,
+            statusMessage = state.dubbingStatusMessage,
+            onStopDubbing = { viewModel.stopAiVoiceDubbing() },
+            batteryInfo = state.batteryInfo
+        )
+    }
+
+    // Modal Overlay Khóa tương tác toàn màn hình & Giữ sáng màn hình khi Render Video
     if (state.isRenderingFFmpeg) {
         FFmpegRenderOverlayDialog(
             progress = state.ffmpegRenderProgress,

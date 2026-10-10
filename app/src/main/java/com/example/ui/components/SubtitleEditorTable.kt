@@ -346,21 +346,21 @@ fun SubtitleEditorTable(
             }
         }
 
-        // BẮT BUỘC THEO NHIỆM VỤ 2: NÚT VÀ KHU VỰC 'XÁC NHẬN / DUYỆT' PHỤ ĐỀ
+        // KHỐI "PHỤ ĐỀ ĐÃ ĐƯỢC XÁC NHẬN" (LỖI 3)
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(
                 containerColor = if (isSubtitlesConfirmed) StudioGreen.copy(alpha = 0.12f) else StudioSurfaceCard
             ),
             border = androidx.compose.foundation.BorderStroke(
-                1.5.dp,
+                1.dp,
                 if (isSubtitlesConfirmed) StudioGreen else StudioBorder
             )
         ) {
             Column(
-                modifier = Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                modifier = Modifier.padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -369,18 +369,18 @@ fun SubtitleEditorTable(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Icon(
                             imageVector = if (isSubtitlesConfirmed) Icons.Default.CheckCircle else Icons.Default.Info,
                             contentDescription = null,
                             tint = if (isSubtitlesConfirmed) StudioGreen else StudioAmber,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                         Text(
                             text = if (isSubtitlesConfirmed) "Phụ đề đã được xác nhận" else "Xác nhận & Duyệt phụ đề",
                             color = Color.White,
-                            fontSize = 14.sp,
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -399,74 +399,64 @@ fun SubtitleEditorTable(
                     }
                 }
 
-                Text(
-                    text = if (isSubtitlesConfirmed)
-                        "Đã xác nhận chốt toàn bộ ${segments.size} câu phụ đề tiếng Việt. Bạn có thể bấm 'Sang Tab Lồng tiếng' để AI bắt đầu đọc giọng nói."
-                    else
-                        "Sau khi xem và chỉnh sửa text tiếng Việt chuẩn xác bên dưới, bấm nút xác nhận để chốt phụ đề trước khi chuyển sang bước Lồng tiếng.",
-                    color = Color.White.copy(alpha = 0.75f),
-                    fontSize = 11.sp,
-                    lineHeight = 16.sp
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+                if (!isSubtitlesConfirmed) {
                     Button(
                         onClick = onConfirmSubtitles,
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = StudioGreen,
                             contentColor = StudioBgDark
                         ),
                         modifier = Modifier
-                            .weight(1f)
-                            .height(42.dp)
+                            .fillMaxWidth()
+                            .height(36.dp)
                             .testTag("confirm_and_approve_subtitles_button")
                     ) {
-                        Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(17.dp))
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
                         Text(
-                            text = if (isSubtitlesConfirmed) "Cập nhật duyệt lại" else "Xác nhận & Duyệt phụ đề",
+                            text = "Xác nhận & Duyệt phụ đề",
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.sp
                         )
                     }
-
-                    if (isSubtitlesConfirmed) {
-                        Button(
-                            onClick = onGoToDubbingTab,
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = StudioCyan,
-                                contentColor = StudioBgDark
-                            ),
-                            modifier = Modifier.height(42.dp)
-                        ) {
-                            Text("Sang Lồng tiếng", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            Spacer(Modifier.width(4.dp))
-                            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(15.dp))
-                        }
+                } else {
+                    // Khi đã xác nhận: Xóa bỏ nút Cập nhật và toàn bộ dòng chú thích phụ rườm rà.
+                    // Chỉ giữ lại 01 nút duy nhất: "Sang Lồng tiếng ->" để chuyển Tab.
+                    Button(
+                        onClick = onGoToDubbingTab,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = StudioCyan,
+                            contentColor = StudioBgDark
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(38.dp)
+                            .testTag("go_to_dubbing_tab_button")
+                    ) {
+                        Text("Sang Lồng tiếng ->", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Spacer(Modifier.width(6.dp))
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(15.dp))
                     }
                 }
             }
         }
 
-        // TOP CONTROL CARD: Stats & Batch Actions
+        // KHỐI "BẢNG KHỚP NỐI & BIÊN TẬP PHỤ ĐỀ" (LỖI 3: Giảm chiều cao khung Header xuống tối thiểu, thu nhỏ textSize, ẩn mô tả phụ)
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(10.dp),
             colors = CardDefaults.cardColors(containerColor = StudioSurfaceCard),
             border = androidx.compose.foundation.BorderStroke(1.dp, StudioBorder)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // Header & Title
+                // Header & Title siêu gọn
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -474,75 +464,69 @@ fun SubtitleEditorTable(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(4.dp),
                             color = StudioCyan.copy(alpha = 0.2f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, StudioCyan.copy(alpha = 0.5f))
+                            border = androidx.compose.foundation.BorderStroke(0.8.dp, StudioCyan.copy(alpha = 0.5f))
                         ) {
                             Icon(
                                 imageVector = Icons.Default.TableChart,
                                 contentDescription = null,
                                 tint = StudioCyan,
                                 modifier = Modifier
-                                    .padding(6.dp)
-                                    .size(18.dp)
+                                    .padding(3.dp)
+                                    .size(13.dp)
                             )
                         }
 
-                        Column {
-                            Text(
-                                text = "Bảng Khớp Nối & Biên Tập Phụ Đề",
-                                color = Color.White,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "Map mốc thời gian Tiếng Trung ↔ Tiếng Việt",
-                                color = StudioCyan,
-                                fontSize = 11.sp
-                            )
-                        }
+                        Text(
+                            text = "Bảng Khớp Nối & Biên Tập Phụ Đề",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        // Đã ẩn hoàn toàn dòng mô tả phụ ("Map mốc thời gian...") để tối đa hóa diện tích hiển thị danh sách câu thoại
                     }
 
-                    // Approved Counter Badge
+                    // Approved Counter Badge nhỏ gọn
                     Surface(
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(6.dp),
                         color = if (approvedCount == segments.size) StudioGreen.copy(alpha = 0.2f) else StudioAmber.copy(alpha = 0.15f),
                         border = androidx.compose.foundation.BorderStroke(
-                            0.8.dp,
+                            0.6.dp,
                             if (approvedCount == segments.size) StudioGreen else StudioAmber
                         )
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.CheckCircle,
                                 contentDescription = null,
                                 tint = if (approvedCount == segments.size) StudioGreen else StudioAmber,
-                                modifier = Modifier.size(13.dp)
+                                modifier = Modifier.size(11.dp)
                             )
                             Text(
                                 text = "$approvedCount/${segments.size} đã duyệt",
                                 color = if (approvedCount == segments.size) StudioGreen else StudioAmber,
-                                fontSize = 11.sp,
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
                     }
                 }
 
-                // Search Bar & Filter Row
+                // Search Bar & Filter Row nhỏ gọn
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(50.dp)
+                        .height(44.dp)
                         .testTag("subtitle_search_input"),
                     placeholder = {
                         Text(

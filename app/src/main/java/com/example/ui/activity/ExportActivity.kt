@@ -115,7 +115,7 @@ class ExportActivity : ComponentActivity() {
                     addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 }
 
-                findViewById<TextView>(R.id.exportTitleText)?.text = "ĐANG XUẤT VIDEO (FFMPEG RENDER)"
+                findViewById<TextView>(R.id.exportTitleText)?.text = "ĐANG XUẤT VIDEO HOÀN CHỈNH"
                 findViewById<TextView>(R.id.exportStatusText)?.text = initialMessage
             }
 
