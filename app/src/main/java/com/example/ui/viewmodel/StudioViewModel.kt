@@ -9,8 +9,6 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.local.StudioDatabase
 import com.example.data.model.DubbingConfig
 import com.example.data.model.MaskConfig
-import com.example.data.model.SampleVideoItem
-import com.example.data.model.SampleVideoRepository
 import com.example.data.model.SubtitleConfig
 import com.example.data.model.SubtitleSegment
 import com.example.data.model.VideoProject
@@ -20,7 +18,6 @@ import com.example.data.repository.TranslationRepository
 import com.example.data.subtitle.SubtitleFileService
 import com.example.data.tts.VoiceDubbingService
 import com.example.data.video.FFmpegOptions
-import com.example.data.video.SampleVideoHelper
 import com.example.data.video.VideoExportService
 import com.example.data.video.VideoImportService
 import kotlinx.coroutines.Job
@@ -343,42 +340,22 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         showNotice("Đã đóng video và trở về màn hình chờ.")
     }
 
-    fun loadSample(sample: SampleVideoItem) {
-        viewModelScope.launch {
-            val (project, _) = SampleVideoHelper.createProjectFromSample(getApplication(), sample)
-            projectDao.insertProject(project)
-            subtitleDao.deleteSubtitlesForProject(project.id)
-
-            // Subtitle state is initially EMPTY per specification (No dummy text)
-            _uiState.update {
-                it.copy(
-                    activeProject = project,
-                    hasVideoLoaded = true,
-                    segments = emptyList(),
-                    translationSuccessful = false,
-                    isSubtitlesConfirmed = false,
-                    isDubbingPlaying = false,
-                    currentPlaybackTimeMs = 0,
-                    isPlaying = false,
-                    selectedTab = 0
-                )
-            }
-            showNotice("Đã tải video mẫu: ${sample.title}. Bạn có thể vào tab 'Bảng phụ đề' để dịch hoặc tải file phụ đề.")
-        }
+    fun loadSample(sampleId: String = "") {
+        // Đã xóa bỏ video mẫu - không nạp dữ liệu mẫu
     }
 
     fun loadProject(projectId: String) {
         viewModelScope.launch {
             val project = projectDao.getProjectById(projectId)
             if (project != null) {
-                val segments = subtitleDao.getSubtitlesList(projectId).filter { it.vietnameseText.isNotBlank() }
+                val segments = subtitleDao.getSubtitlesList(projectId)
                 val allApproved = segments.isNotEmpty() && segments.all { it.isApproved }
                 _uiState.update {
                     it.copy(
                         activeProject = project,
                         hasVideoLoaded = true,
                         segments = segments,
-                        translationSuccessful = segments.isNotEmpty(),
+                        translationSuccessful = segments.any { s -> s.vietnameseText.isNotBlank() },
                         isSubtitlesConfirmed = allApproved,
                         isDubbingPlaying = false,
                         currentPlaybackTimeMs = 0,
@@ -1194,15 +1171,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 val currentSegments = _uiState.value.segments.ifEmpty {
                     subtitleDao.getSubtitlesList(project.id)
                 }
-                val rawSource = if (currentSegments.isNotEmpty()) {
-                    currentSegments
-                } else if (project.isSample) {
-                    val sample = SampleVideoRepository.SAMPLES.find { it.id == project.id }
-                        ?: SampleVideoRepository.SAMPLES.first()
-                    SampleVideoHelper.getRawSourceSegments(sample)
-                } else {
-                    emptyList()
-                }
+                val rawSource = currentSegments
 
                 if (rawSource.isEmpty()) {
                     _uiState.update {
@@ -1228,8 +1197,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 }
 
                 // STAGE 2: Dịch thuật AI hàng loạt (Gemini Flash Batch JSON hoặc Google Neural Failsafe)
-                val sampleObj = SampleVideoRepository.SAMPLES.find { it.id == project.id }
-                val videoCategory = sampleObj?.category ?: "Ẩm thực & Đời sống Douyin"
+                val videoCategory = "Ẩm thực & Đời sống Douyin"
 
                 addLog("[2/2] Dịch thuật ngữ cảnh toàn bộ ${rawSource.size} câu thoại với $engineName...")
                 val updatedSegments = TranslationService.translateBatchSegments(

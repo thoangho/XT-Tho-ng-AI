@@ -54,7 +54,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import com.example.data.model.SampleVideoItem
 import com.example.data.model.VideoProject
 import com.example.ui.theme.StudioAmber
 import com.example.ui.theme.StudioBgDark
@@ -68,14 +67,13 @@ import com.example.ui.theme.StudioSurfaceCardHover
 
 /**
  * Modal Chọn & Nạp Video Người Dùng:
- * - ĐÃ XÓA HOÀN TOÀN Tab "Video Mẫu Có Sẵn" và danh sách clip mẫu theo yêu cầu Lỗi 4.
- * - Chỉ tập trung vào nạp video thực tế từ thiết bị (MP4, MOV), đường link URL Douyin/TikTok, hoặc danh sách video cá nhân.
+ * - Đã xóa hoàn toàn tab video mẫu và danh sách clip mẫu có sẵn.
+ * - Chỉ tập trung vào nạp video thực tế từ thiết bị (MP4, MOV), đường link URL Douyin/TikTok, hoặc danh sách video của người dùng.
  */
 @Composable
 fun SampleVideoPickerSheet(
-    activeSampleId: String?,
+    activeProjectId: String?,
     allProjects: List<VideoProject>,
-    onSelectSample: (SampleVideoItem) -> Unit = {},
     onSelectProject: (String) -> Unit,
     onPickCustomVideo: () -> Unit,
     onImportUrl: (String, String?) -> Unit,
@@ -243,7 +241,7 @@ fun SampleVideoPickerSheet(
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             items(allProjects, key = { it.id }) { proj ->
-                                val isSelected = activeSampleId == proj.id
+                                val isSelected = activeProjectId == proj.id
                                 Card(
                                     modifier = Modifier
                                         .fillMaxWidth()

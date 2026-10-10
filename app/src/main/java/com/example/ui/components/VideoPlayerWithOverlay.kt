@@ -443,77 +443,26 @@ fun DouyinRealisticVideoCanvas(
             val w = size.width
             val h = size.height
 
-            // Thematic Background
-            val isFood = projectTitle.contains("Trùng Khánh", true) || projectTitle.contains("Lẩu", true)
-            val isTech = projectTitle.contains("Smartphone", true) || projectTitle.contains("Review", true)
-
-            val baseColors = when {
-                isFood -> listOf(Color(0xFF3E0A00), Color(0xFF7A1D05), Color(0xFF1F0500))
-                isTech -> listOf(Color(0xFF031926), Color(0xFF083344), Color(0xFF020E17))
-                else -> listOf(Color(0xFF1E112A), Color(0xFF2E1065), Color(0xFF0F071A))
-            }
+            // Modern Studio Gradient Background
+            val baseColors = listOf(Color(0xFF0F172A), Color(0xFF1E293B), Color(0xFF0A0F1D))
 
             drawRect(
                 brush = Brush.verticalGradient(baseColors),
                 size = size
             )
 
-            // Dynamic Themed Art Centerpiece
-            if (isFood) {
-                // Hotpot Cauldron
-                drawCircle(
-                    color = Color(0xFFFF5722).copy(alpha = 0.35f * pulse),
-                    radius = w * 0.36f,
-                    center = Offset(w * 0.5f, h * 0.45f)
-                )
-                drawCircle(
-                    color = Color(0xFFD84315),
-                    radius = w * 0.28f,
-                    center = Offset(w * 0.5f, h * 0.45f)
-                )
-                // Broth surface
-                drawCircle(
-                    color = Color(0xFFBF360C),
-                    radius = w * 0.24f,
-                    center = Offset(w * 0.5f, h * 0.45f)
-                )
-                // 9-Grid Lines
-                val r = w * 0.24f
-                val cx = w * 0.5f
-                val cy = h * 0.45f
-                drawLine(Color(0xFFFFCC80), Offset(cx - r * 0.33f, cy - r), Offset(cx - r * 0.33f, cy + r), 3f)
-                drawLine(Color(0xFFFFCC80), Offset(cx + r * 0.33f, cy - r), Offset(cx + r * 0.33f, cy + r), 3f)
-                drawLine(Color(0xFFFFCC80), Offset(cx - r, cy - r * 0.33f), Offset(cx + r, cy - r * 0.33f), 3f)
-                drawLine(Color(0xFFFFCC80), Offset(cx - r, cy + r * 0.33f), Offset(cx + r, cy + r * 0.33f), 3f)
-            } else if (isTech) {
-                // Smartphone Screen Body
-                drawRoundRect(
-                    color = Color(0xFF0E7490),
-                    topLeft = Offset(w * 0.22f, h * 0.28f),
-                    size = Size(w * 0.56f, h * 0.38f),
-                    cornerRadius = CornerRadius(16f, 16f)
-                )
-                drawRoundRect(
-                    brush = Brush.linearGradient(listOf(StudioCyan, StudioPurple)),
-                    topLeft = Offset(w * 0.25f, h * 0.30f),
-                    size = Size(w * 0.50f, h * 0.34f),
-                    cornerRadius = CornerRadius(12f, 12f)
-                )
-            } else {
-                // Comedy / Office setup
-                drawRoundRect(
-                    color = Color(0xFF334155),
-                    topLeft = Offset(w * 0.18f, h * 0.32f),
-                    size = Size(w * 0.64f, h * 0.28f),
-                    cornerRadius = CornerRadius(12f, 12f)
-                )
-                drawRoundRect(
-                    color = Color(0xFF475569),
-                    topLeft = Offset(w * 0.22f, h * 0.34f),
-                    size = Size(w * 0.56f, h * 0.22f),
-                    cornerRadius = CornerRadius(8f, 8f)
-                )
-            }
+            // Studio Art Centerpiece
+            drawCircle(
+                color = StudioCyan.copy(alpha = 0.15f * pulse),
+                radius = w * 0.35f,
+                center = Offset(w * 0.5f, h * 0.45f)
+            )
+            drawRoundRect(
+                brush = Brush.linearGradient(listOf(StudioCyan.copy(alpha = 0.3f), StudioPurple.copy(alpha = 0.3f))),
+                topLeft = Offset(w * 0.22f, h * 0.30f),
+                size = Size(w * 0.56f, h * 0.30f),
+                cornerRadius = CornerRadius(16f, 16f)
+            )
 
             // Right Rail: Douyin Engagement Icons (Hearts, Comments, Share)
             val rightX = w * 0.90f

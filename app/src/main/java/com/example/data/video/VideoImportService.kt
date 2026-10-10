@@ -376,7 +376,7 @@ object VideoImportService {
             isSample = false
         )
 
-        val segments = generateDefaultSegments(projectId, durationMs, project.title)
+        val segments = emptyList<SubtitleSegment>()
         return ImportedVideoResult(project, segments)
     }
 
@@ -451,11 +451,6 @@ object VideoImportService {
 
         onProgress(1.0f, "Hoàn tất nhập video!")
         return ImportedVideoResult(project, segments)
-    }
-
-    private fun generateDefaultSegments(projectId: String, durationMs: Long, title: String = ""): List<SubtitleSegment> {
-        // Đã xóa sạch toàn bộ các câu thoại mẫu cứng, ban đầu luôn trả về danh sách rỗng
-        return emptyList()
     }
 }
 

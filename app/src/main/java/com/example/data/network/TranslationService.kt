@@ -334,7 +334,7 @@ object TranslationService {
         // 1. Direct dictionary check
         SHORT_PHRASES_DICT[trimmedCn]?.let { return it }
 
-        // 2. Check if original starts with a short exclamation: "哇", "快看", "等等", "对", "走"
+        // 2. Check if original starts with a short exclamation: "哇", "等等", "对", "走"
         for ((cnExcl, vnExcl) in SHORT_EXCLAMATIONS) {
             if (trimmedCn.startsWith(cnExcl) && !translated.contains(vnExcl, ignoreCase = true)) {
                 return "$vnExcl, ${translated.replaceFirstChar { it.lowercase() }}"
@@ -472,7 +472,7 @@ object TranslationService {
                 
                 [Yêu cầu dịch thuật chuẩn xác]
                 1. Dịch câu thoại Tiếng Trung thật tự nhiên, sát nghĩa ngữ cảnh, chuẩn văn phong lồng tiếng Việt Nam (ngắn gọn, giàu cảm xúc, đúng nhịp nói nhân vật).
-                2. KHÔNG bỏ sót bất kỳ câu thoại ngắn nào (kể cả từ cảm thán, tiếng đệm: 哇, 快看, 对, 走, 真的, 等等, 绝了, 尝尝, 好吃, 厉害).
+                2. KHÔNG bỏ sót bất kỳ câu thoại ngắn nào (kể cả từ cảm thán, tiếng đệm: 哇, 对, 走, 真的, 等等, 绝了, 尝尝, 好吃, 厉害).
                 3. Giữ trọn nghĩa và chuyển hóa mượt mà các từ lóng và thành ngữ giới trẻ Douyin.
                 4. Chỉ trả về DUY NHẤT câu dịch Tiếng Việt, không giải thích hay mở ngoặc.
 
@@ -646,7 +646,7 @@ object TranslationService {
             [Yêu cầu dịch thuật hàng loạt]
             1. Dịch toàn bộ mảng JSON các câu thoại Tiếng Trung sang Tiếng Việt, giữ đúng trường "id".
             2. Chuẩn văn phong lồng tiếng Việt Nam (tự nhiên, biểu cảm, ngắn gọn, đúng nhịp miệng).
-            3. KHÔNG bỏ sót bất kỳ câu ngắn nào (kể cả câu cảm thán: 哇, 快看, 对, 走, 真的, 绝了, 好吃...).
+            3. KHÔNG bỏ sót bất kỳ câu ngắn nào (kể cả câu cảm thán: 哇, 对, 走, 真的, 绝了, 好吃...).
             4. BẮT BUỘC chỉ trả về duy nhất một JSON Array hợp lệ gồm các object có trường "id" (số nguyên) và "vi" (chuỗi Tiếng Việt). Tuyệt đối không thêm lời dẫn giải ngoài JSON.
             
             Ví dụ định dạng đầu ra:
@@ -813,9 +813,6 @@ object TranslationService {
         "哇！" to "Oa!",
         "哇" to "Oa!",
         "哇塞" to "Trời ơi đỉnh quá!",
-        "快看！" to "Mau nhìn này!",
-        "快看" to "Mau nhìn kìa!",
-        "看这里" to "Nhìn vào đây này!",
         "对！" to "Chuẩn luôn!",
         "对" to "Đúng vậy!",
         "对啊" to "Chuẩn rồi đấy!",
@@ -878,9 +875,6 @@ object TranslationService {
     private val SHORT_EXCLAMATIONS = listOf(
         "哇！" to "Oa",
         "哇" to "Oa",
-        "快看！" to "Mau nhìn kìa",
-        "快看" to "Mau nhìn này",
-        "看这里" to "Nhìn này",
         "等等" to "Khoan đã",
         "对" to "Đúng vậy",
         "走" to "Đi thôi",
@@ -901,30 +895,8 @@ object TranslationService {
         "抠出三室一厅" to "muốn độn thổ"
     )
 
-    private val EXPANDED_DICTIONARY = mapOf(
-        "今天带大家来尝尝重庆正宗九宫格老火锅" to "Hôm nay mình dẫn mọi người đi thử lẩu 9 ô chuẩn vị Trùng Khánh",
-        "看看这个牛油红亮，麻辣鲜香扑鼻而来" to "Nhìn nồi nước lẩu đỏ au béo ngậy này, mùi cay nồng thơm nức mũi luôn",
-        "毛肚七上八下，脆爽弹牙，真的绝绝子" to "Nhúng sách bò đúng 7 lên 8 xuống, giòn sần sật đỉnh nóc kịch trần thật sự",
-        "蘸上满满的蒜泥香油，一点都不燥辣" to "Chấm ngập trong dầu mè tỏi phi, vừa thơm béo lại không hề gắt họng",
-        "老铁们赶紧点赞收藏，下次一起来打卡" to "Cả nhà nhớ bấm tim và lưu lại ngay, lần sau cùng ghé thử nha",
-        "这款全新的折叠屏手机，上手质感完全颠覆我的想象" to "Chiếc điện thoại màn hình gập mới này khi cầm trên tay thực sự vượt xa kỳ vọng",
-        "折痕处理得非常平整，展开几乎感觉不到它的存在" to "Phần nếp gấp được xử lý siêu phẳng, mở ra hầu như không cảm nhận thấy vết hằn nào",
-        "配备最新的高通旗舰芯片，玩大型游戏完全满帧流畅" to "Trang bị con chip Snapdragon đầu bảng mới nhất, chiến game nặng cực kỳ mượt mà",
-        "影像系统升级巨大，夜景拍摄色彩极其通透细腻" to "Hệ thống camera nâng cấp vượt trội, ảnh chụp đêm trong trẻo và chi tiết ấn tượng",
-        "整体而言，这是目前我认为最具性价比的折叠旗舰" to "Tổng kết lại, đây chính là mẫu flagship gập đáng đồng tiền bát gạo nhất hiện nay",
-        "老板问我：你会使用各种办公软件吗" to "Sếp hỏi tôi: Cậu có thành thạo các phần mềm văn phòng không",
-        "我自信满满地回答：那是相当熟练" to "Tôi tự tin trả lời ngay: Dạ chuyện nhỏ, siêu thành thạo luôn ạ",
-        "结果上班第一天，连打印机电源在哪里都找不到" to "Ai ngờ ngày đầu đi làm, đến cái công tắc máy in ở đâu tôi cũng không tìm ra",
-        "同事都在憋笑，这尴尬得我能抠出三室一厅" to "Đồng nghiệp ai cũng nhịn cười, ngại đến mức muốn độn thổ luôn các bác ạ",
-        "快救救孩子吧，太难了" to "Ai cứu tôi với, cuộc sống người lớn khó quá đi",
-        "大家好" to "Chào mọi người",
-        "太棒了" to "Tuyệt vời quá",
-        "点赞" to "Bấm tim",
-        "关注" to "Theo dõi",
-        "老板" to "Ông chủ",
-        "好吃" to "Ngon lắm",
-        "真的" to "Thật sự"
-    )
+    // Đã xóa sạch toàn bộ các câu thoại mẫu cứng, không giữ câu mẫu trong mã nguồn
+    private val EXPANDED_DICTIONARY = emptyMap<String, String>()
 
     private val COMMON_VOCAB_MAP = mapOf(
         "欢迎" to "chào mừng", "来到" to "đến với", "今天" to "hôm nay", "明天" to "ngày mai",

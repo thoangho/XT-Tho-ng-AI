@@ -77,7 +77,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.AspectRatio
-import com.example.data.model.SampleVideoRepository
 import com.example.ui.components.BatteryIndicatorBadge
 import com.example.ui.components.LowBatteryWarningBanner
 import com.example.ui.components.LowBatteryExportWarningDialog
@@ -314,7 +313,7 @@ fun StudioMainScreen(
                             color = StudioSurfaceCard,
                             border = androidx.compose.foundation.BorderStroke(
                                 1.dp,
-                                if (project.isSample) StudioBorder else StudioGreen.copy(alpha = 0.5f)
+                                StudioGreen.copy(alpha = 0.5f)
                             )
                         ) {
                             Row(
@@ -332,7 +331,7 @@ fun StudioMainScreen(
                                     Icon(
                                         imageVector = Icons.Default.Movie,
                                         contentDescription = null,
-                                        tint = if (project.isSample) StudioCyan else StudioGreen,
+                                        tint = StudioGreen,
                                         modifier = Modifier.size(20.dp)
                                     )
                                     Column {
@@ -344,8 +343,8 @@ fun StudioMainScreen(
                                             maxLines = 1
                                         )
                                         Text(
-                                            text = if (project.isSample) "Video mẫu Douyin • Nhấn để đổi hoặc tải video của bạn" else "Video của bạn • Đã nạp thành công",
-                                            color = if (project.isSample) StudioAmber else StudioGreen,
+                                            text = "Video của bạn • Đã nạp thành công",
+                                            color = StudioGreen,
                                             fontSize = 11.sp
                                         )
                                     }
@@ -386,7 +385,7 @@ fun StudioMainScreen(
                                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                                         modifier = Modifier.height(28.dp)
                                     ) {
-                                        Text("Đổi / Mẫu", fontSize = 11.sp)
+                                        Text("Đổi video", fontSize = 11.sp)
                                     }
                                 }
                             }
@@ -924,9 +923,8 @@ fun StudioMainScreen(
     // Sample & custom video chooser modal
     if (showSamplePicker) {
         SampleVideoPickerSheet(
-            activeSampleId = state.activeProject?.id,
+            activeProjectId = state.activeProject?.id,
             allProjects = state.allProjects,
-            onSelectSample = { viewModel.loadSample(it) },
             onSelectProject = { viewModel.loadProject(it) },
             onPickCustomVideo = {
                 try {
