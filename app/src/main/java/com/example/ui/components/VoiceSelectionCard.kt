@@ -81,6 +81,7 @@ fun VoiceSelectionCard(
     onTestVoice: () -> Unit,
     isDubbingGenerating: Boolean = false,
     dubbingGenerationProgress: Float = 0f,
+    dubbingProgressInt: Int = 0,
     dubbingStatusMessage: String = "",
     onGenerateDubbingFromSrt: () -> Unit = {},
     onImportSrt: () -> Unit = {},
@@ -264,7 +265,7 @@ fun VoiceSelectionCard(
                         onStartDubbing()
                     }
                 },
-                enabled = isSubtitlesConfirmed && approvedSegmentsCount > 0,
+                enabled = approvedSegmentsCount > 0,
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (isDubbingActive) StudioRed else StudioGreen,
@@ -292,8 +293,11 @@ fun VoiceSelectionCard(
 
             // BỔ SUNG THANH TIẾN TRÌNH & TEXTVIEW HIỂN THỊ TỶ LỆ % TIẾN ĐỘ ĐỌC REAL-TIME (Lỗi 1)
             if (isDubbingGenerating) {
+                val displayPercent = if (dubbingProgressInt > 0) dubbingProgressInt else (dubbingGenerationProgress * 100).toInt().coerceIn(0, 100)
                 Surface(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("dubbing_progress_container"),
                     shape = RoundedCornerShape(12.dp),
                     color = StudioCyan.copy(alpha = 0.15f),
                     border = androidx.compose.foundation.BorderStroke(1.dp, StudioCyan.copy(alpha = 0.5f))
@@ -311,22 +315,25 @@ fun VoiceSelectionCard(
                                 text = "Tiến độ lồng tiếng AI:",
                                 color = StudioCyan,
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.testTag("dubbing_progress_label")
                             )
                             Text(
-                                text = "${(dubbingGenerationProgress * 100).toInt().coerceIn(0, 100)}%",
+                                text = "$displayPercent%",
                                 color = Color.White,
                                 fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.testTag("dubbing_percentage_text")
                             )
                         }
 
                         LinearProgressIndicator(
-                            progress = { dubbingGenerationProgress.coerceIn(0f, 1f) },
+                            progress = { (displayPercent / 100f).coerceIn(0f, 1f) },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(8.dp)
-                                .clip(RoundedCornerShape(4.dp)),
+                                .clip(RoundedCornerShape(4.dp))
+                                .testTag("dubbing_progress_bar"),
                             color = StudioCyan,
                             trackColor = Color(0xFF1E293B)
                         )
@@ -335,7 +342,8 @@ fun VoiceSelectionCard(
                             text = if (dubbingStatusMessage.isNotBlank()) dubbingStatusMessage else "Đang khởi tạo âm thanh...",
                             color = Color.White,
                             fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.testTag("dubbing_status_text")
                         )
                     }
                 }

@@ -8,9 +8,13 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.lifecycleScope
 import com.example.ui.screens.StudioMainScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.StudioViewModel
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val studioViewModel: StudioViewModel by viewModels()
@@ -22,6 +26,22 @@ class MainActivity : ComponentActivity() {
         // 1. Khởi tạo ban đầu: Chưa có video đầu vào -> Ẩn hoàn toàn 2 nút 'Dịch Phụ Đề' & 'Xuất video'
         updateActionButtonVisibility(hasVideo = false)
 
+        // 2. Bảo vệ tiến trình Lồng tiếng AI:
+        // Khi tiến trình bắt đầu: Bật FLAG_NOT_TOUCHABLE (chặn chạm màn hình) và FLAG_KEEP_SCREEN_ON (giữ sáng màn hình)
+        // Khi hoàn tất hoặc thất bại: Tắt các cờ Window Flags
+        lifecycleScope.launch {
+            studioViewModel.uiState
+                .map { it.isDubbingGenerating }
+                .distinctUntilChanged()
+                .collect { isGenerating ->
+                    if (isGenerating) {
+                        enableDubbingProtectionMode()
+                    } else {
+                        disableDubbingProtectionMode()
+                    }
+                }
+        }
+
         setContent {
             MyApplicationTheme {
                 StudioMainScreen(
@@ -29,6 +49,29 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize()
                 )
             }
+        }
+    }
+
+    /**
+     * Bật Chế độ Bảo vệ Lồng tiếng AI:
+     * - FLAG_NOT_TOUCHABLE: Chặn bấm nhầm màn hình
+     * - FLAG_KEEP_SCREEN_ON: Giữ màn hình luôn sáng trong suốt quá trình tạo TTS
+     */
+    fun enableDubbingProtectionMode() {
+        runOnUiThread {
+            window.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE)
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
+    /**
+     * Tắt Chế độ Bảo vệ Lồng tiếng AI:
+     * - Gỡ bỏ FLAG_NOT_TOUCHABLE và FLAG_KEEP_SCREEN_ON
+     */
+    fun disableDubbingProtectionMode() {
+        runOnUiThread {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE)
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
     }
 

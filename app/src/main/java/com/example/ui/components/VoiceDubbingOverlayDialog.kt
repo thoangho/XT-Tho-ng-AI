@@ -70,7 +70,8 @@ fun VoiceDubbingOverlayDialog(
     progress: Float,
     statusMessage: String,
     onStopDubbing: () -> Unit,
-    batteryInfo: BatteryInfo? = null
+    batteryInfo: BatteryInfo? = null,
+    dubbingProgressInt: Int = 0
 ) {
     val context = LocalContext.current
 
@@ -97,7 +98,7 @@ fun VoiceDubbingOverlayDialog(
         label = "rotation"
     )
 
-    val percentInt = (progress * 100).toInt().coerceIn(0, 100)
+    val percentInt = if (dubbingProgressInt > 0) dubbingProgressInt else (progress * 100).toInt().coerceIn(0, 100)
 
     Dialog(
         onDismissRequest = { /* Chặn đóng ngoài ý muốn */ },

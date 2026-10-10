@@ -513,12 +513,13 @@ fun StudioMainScreen(
                             2 -> {
                                 // Tab 2: Voice Dubbing (Hoài Mỹ / Nam Minh) & Audio Ducking Mixer
                                 val approvedCount = remember(state.segments) {
-                                    state.segments.count { it.isApproved && it.vietnameseText.isNotBlank() }
+                                    val explicitApproved = state.segments.count { it.isApproved && it.vietnameseText.isNotBlank() }
+                                    if (explicitApproved > 0) explicitApproved else state.segments.count { it.vietnameseText.isNotBlank() }
                                 }
                                 VoiceSelectionCard(
                                     dubbingConfig = project.dubbingConfig,
                                     availableVoices = state.availableVoices,
-                                    isSubtitlesConfirmed = state.isSubtitlesConfirmed,
+                                    isSubtitlesConfirmed = state.isSubtitlesConfirmed || approvedCount > 0,
                                     approvedSegmentsCount = approvedCount,
                                     isDubbingPlaying = state.isDubbingPlaying,
                                     onStartDubbing = { viewModel.startAiVoiceDubbing() },
@@ -534,6 +535,7 @@ fun StudioMainScreen(
                                     },
                                     isDubbingGenerating = state.isDubbingGenerating,
                                     dubbingGenerationProgress = state.dubbingGenerationProgress,
+                                    dubbingProgressInt = state.dubbingProgressInt,
                                     dubbingStatusMessage = state.dubbingStatusMessage,
                                     onGenerateDubbingFromSrt = { viewModel.runDubbingGenerationOnly() },
                                     onImportSrt = { getSubtitleFileLauncher.launch("*/*") }
@@ -964,7 +966,8 @@ fun StudioMainScreen(
             progress = state.dubbingGenerationProgress,
             statusMessage = state.dubbingStatusMessage,
             onStopDubbing = { viewModel.stopAiVoiceDubbing() },
-            batteryInfo = state.batteryInfo
+            batteryInfo = state.batteryInfo,
+            dubbingProgressInt = state.dubbingProgressInt
         )
     }
 

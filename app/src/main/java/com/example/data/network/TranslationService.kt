@@ -573,7 +573,7 @@ object TranslationService {
                 "Đang xử lý Lô $batchNumber/$totalBatches (${processedCount}/$totalSegments câu)..."
             )
 
-            var batchTranslatedMap: Map<Long, String>? = null
+            var batchTranslatedMap: Map<Int, String>? = null
 
             // Tầng 1: Thử dịch lô bằng Gemini Batch JSON API với danh sách Keys và cơ chế Round-Robin / Fallback
             if (effectiveKeys.isNotEmpty()) {
@@ -586,7 +586,8 @@ object TranslationService {
 
             // Tầng 2 -> 5: Dịch từng câu trong lô nếu Gemini không có hoặc lỗi
             batch.forEachIndexed { idxInBatch, seg ->
-                val rawVi = batchTranslatedMap?.get(seg.id)
+                val batchId = idxInBatch + 1
+                val rawVi = batchTranslatedMap?.get(batchId)
                 val finalVi = if (!rawVi.isNullOrBlank()) {
                     val polished = polishVietnameseDubbing(rawVi, seg.originalChinese)
                     verifyAndPreserveShortUtterances(seg.originalChinese, polished)
@@ -618,19 +619,162 @@ object TranslationService {
         finalResults
     }
 
+    /**
+     * Bóc tách âm thanh video thành danh sách phụ đề (Speech-to-Text & Translation) qua Gemini 2.5 Flash Multimodal.
+     * Gửi luồng âm thanh thực tế được trích xuất từ video cùng prompt chuyên dụng lên Google AI Studio.
+     */
+    suspend fun transcribeAndTranslateAudioWithGemini(
+        audioFile: java.io.File,
+        userApiKey: String?,
+        videoTitle: String = "",
+        projectId: String
+    ): List<SubtitleSegment>? = withContext(Dispatchers.IO) {
+        val effectiveKeys = getEffectiveApiKeys(userApiKey)
+        if (effectiveKeys.isEmpty() || !audioFile.exists() || audioFile.length() < 1000) {
+            return@withContext null
+        }
+
+        val audioBytes = try {
+            audioFile.readBytes()
+        } catch (e: Exception) {
+            Log.e(TAG, "Cannot read audio bytes: ${e.message}")
+            return@withContext null
+        }
+
+        if (audioBytes.size > 15 * 1024 * 1024) {
+            Log.w(TAG, "Audio file too large for inline data (${audioBytes.size} bytes)")
+            return@withContext null
+        }
+
+        val base64Audio = android.util.Base64.encodeToString(audioBytes, android.util.Base64.NO_WRAP)
+
+        val prompt = """
+            Bạn là chuyên gia bóc tách lời thoại và phiên dịch video ngắn Douyin/TikTok sang Tiếng Việt cho hệ thống XThoáng AI.
+            Hãy lắng nghe thật kỹ tệp âm thanh này và bóc tách TOÀN BỘ lời thoại tiếng Trung thành các phân đoạn phụ đề có mốc thời gian chính xác, đồng thời dịch sang Tiếng Việt chuẩn văn phong lồng tiếng (tự nhiên, biểu cảm, đúng nhịp).
+            Tiêu đề video: ${if (videoTitle.isNotBlank()) videoTitle else "Video ngắn Douyin/TikTok"}
+
+            Yêu cầu định dạng:
+            BẮT BUỘC chỉ trả về duy nhất một JSON Array hợp lệ, tuyệt đối không có lời dẫn nào khác ngoài JSON.
+            Mỗi object gồm các trường:
+            - "id": số nguyên thứ tự (1, 2, 3...)
+            - "start": thời điểm bắt đầu bằng mili-giây (ms, ví dụ: 500)
+            - "end": thời điểm kết thúc bằng mili-giây (ms, ví dụ: 2500)
+            - "zh": câu thoại gốc tiếng Trung
+            - "vi": bản dịch Tiếng Việt tự nhiên
+
+            Ví dụ đầu ra:
+            [{"id": 1, "start": 300, "end": 2100, "zh": "哇，太好吃了！", "vi": "Oa, ngon xuất sắc luôn!"}]
+        """.trimIndent()
+
+        val jsonBody = JSONObject().apply {
+            put("contents", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("parts", JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("inlineData", JSONObject().apply {
+                                put("mimeType", "audio/mp4")
+                                put("data", base64Audio)
+                            })
+                        })
+                        put(JSONObject().apply {
+                            put("text", prompt)
+                        })
+                    })
+                })
+            })
+            put("generationConfig", JSONObject().apply {
+                put("temperature", 0.2)
+                put("topP", 0.8)
+                put("maxOutputTokens", 4096)
+            })
+        }
+
+        for ((idx, currentKey) in effectiveKeys.withIndex()) {
+            val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$currentKey"
+            val request = Request.Builder()
+                .url(url)
+                .post(jsonBody.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+                .build()
+
+            try {
+                httpClient.newCall(request).execute().use { response ->
+                    if (response.code in 400..403 || response.code == 429) {
+                        Log.w(TAG, "Gemini Audio Key #$idx rejected (${response.code}). Trying next key...")
+                        return@use
+                    }
+                    if (!response.isSuccessful) return@use
+                    val responseStr = response.body?.string() ?: return@use
+                    val responseJson = JSONObject(responseStr)
+                    val candidates = responseJson.optJSONArray("candidates") ?: return@use
+                    val firstCandidate = candidates.optJSONObject(0) ?: return@use
+                    val content = firstCandidate.optJSONObject("content") ?: return@use
+                    val parts = content.optJSONArray("parts") ?: return@use
+                    val part = parts.optJSONObject(0) ?: return@use
+                    val rawText = part.optString("text")?.trim() ?: return@use
+
+                    val cleanedJson = rawText.replace(Regex("^```json\\s*", RegexOption.IGNORE_CASE), "")
+                        .replace(Regex("^```\\s*"), "")
+                        .replace(Regex("\\s*```$"), "")
+                        .trim()
+
+                    val startIdx = cleanedJson.indexOf('[')
+                    val endIdx = cleanedJson.lastIndexOf(']')
+                    if (startIdx == -1 || endIdx == -1 || endIdx <= startIdx) return@use
+
+                    val jsonArrayStr = cleanedJson.substring(startIdx, endIdx + 1)
+                    val array = JSONArray(jsonArrayStr)
+                    val segmentsList = mutableListOf<SubtitleSegment>()
+
+                    for (i in 0 until array.length()) {
+                        val obj = array.getJSONObject(i)
+                        val start = obj.optLong("start", 0L)
+                        val end = obj.optLong("end", start + 1500L)
+                        val zh = obj.optString("zh", "").trim()
+                        val vi = obj.optString("vi", "").trim()
+
+                        if (zh.isNotBlank() || vi.isNotBlank()) {
+                            val sanitizedVi = com.example.data.repository.TranslationRepository.sanitizeTranslatedSubtitles(vi)
+                            val polishedVi = polishVietnameseDubbing(sanitizedVi, zh)
+                            val finalVi = verifyAndPreserveShortUtterances(zh, polishedVi)
+                            segmentsList.add(
+                                SubtitleSegment(
+                                    projectId = projectId,
+                                    indexNumber = i + 1,
+                                    startTimeMs = start,
+                                    endTimeMs = if (end > start) end else start + 1200L,
+                                    originalChinese = zh.ifBlank { "..." },
+                                    vietnameseText = sanitizeForTts(finalVi),
+                                    isApproved = true,
+                                    isEdited = false
+                                )
+                            )
+                        }
+                    }
+
+                    if (segmentsList.isNotEmpty()) {
+                        return@withContext segmentsList.sortedBy { it.startTimeMs }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Network error during Gemini Audio Transcribe with Key #$idx: ${e.message}")
+            }
+        }
+        return@withContext null
+    }
+
     private fun tryTranslateBatchGemini(
         segments: List<SubtitleSegment>,
         apiKey: String,
         videoTitle: String,
         videoCategory: String,
         allCandidateKeys: List<String> = emptyList()
-    ): Map<Long, String>? {
+    ): Map<Int, String>? {
         val keysToTry = if (allCandidateKeys.isNotEmpty()) allCandidateKeys else listOf(apiKey)
 
         val inputJsonArray = JSONArray()
-        segments.forEach { seg ->
+        segments.forEachIndexed { idx, seg ->
             val item = JSONObject().apply {
-                put("id", seg.id)
+                put("id", idx + 1)
                 put("zh", seg.originalChinese.trim())
             }
             inputJsonArray.put(item)
@@ -708,12 +852,12 @@ object TranslationService {
 
                     val jsonArrayStr = cleanedJson.substring(startIdx, endIdx + 1)
                     val array = JSONArray(jsonArrayStr)
-                    val result = mutableMapOf<Long, String>()
+                    val result = mutableMapOf<Int, String>()
                     for (i in 0 until array.length()) {
                         val obj = array.getJSONObject(i)
-                        val id = obj.optLong("id", -1L)
+                        val id = obj.optInt("id", -1)
                         val vi = obj.optString("vi", "").trim()
-                        if (id != -1L && vi.isNotBlank()) {
+                        if (id != -1 && vi.isNotBlank()) {
                             val sanitizedVi = com.example.data.repository.TranslationRepository.sanitizeTranslatedSubtitles(vi)
                             result[id] = sanitizedVi
                         }

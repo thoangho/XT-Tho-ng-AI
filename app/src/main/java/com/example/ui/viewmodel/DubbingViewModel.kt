@@ -21,8 +21,8 @@ class DubbingViewModel(application: Application? = null) : ViewModel() {
     private var voiceDubbingService: VoiceDubbingService? = application?.let { VoiceDubbingService(it) }
     private var dubbingConfig: DubbingConfig = DubbingConfig()
 
-    private val _dubbingProgress = MutableStateFlow(0f) // 0.0 to 100.0
-    val dubbingProgress: StateFlow<Float> = _dubbingProgress.asStateFlow()
+    private val _dubbingProgress = MutableStateFlow(0) // StateFlow<Int> (0 to 100)
+    val dubbingProgress: StateFlow<Int> = _dubbingProgress.asStateFlow()
 
     private val _statusText = MutableStateFlow("Sẵn sàng")
     val statusText: StateFlow<String> = _statusText.asStateFlow()
@@ -47,30 +47,31 @@ class DubbingViewModel(application: Application? = null) : ViewModel() {
         viewModelScope.launch {
             if (subtitleList.isEmpty()) {
                 _statusText.value = "Danh sách phụ đề trống"
-                _dubbingProgress.value = 0f
+                _dubbingProgress.value = 0
                 return@launch
             }
 
             _isDubbing.value = true
-            _dubbingProgress.value = 0f
+            _dubbingProgress.value = 0
             val audioFiles = mutableListOf<File>()
             val total = subtitleList.size
 
             subtitleList.forEachIndexed { index, sentence ->
-                _statusText.value = "Đang tạo giọng đọc (${index + 1}/$total)"
+                val current = index + 1
+                val percentInt = ((current.toFloat() / total) * 100).toInt()
+                _statusText.value = "Đang tạo giọng đọc $current/$total câu - $percentInt%"
+                _dubbingProgress.value = percentInt
 
-                // Gọi API TTS tạo file âm thanh ở đây
+                // Gọi API TTS tạo file âm thanh
                 val audioFile = generateTTSAudioForSentence(sentence, index.toLong())
                 if (audioFile != null && audioFile.exists()) {
                     audioFiles.add(audioFile)
                 }
-
-                // Cập nhật % tiến trình (0.0f đến 100.0f)
-                _dubbingProgress.value = ((index + 1).toFloat() / total) * 100f
             }
 
             _generatedAudioFiles.value = audioFiles
             _isDubbing.value = false
+            _dubbingProgress.value = 100
             _statusText.value = "Tạo lồng tiếng hoàn tất!"
         }
     }
@@ -92,21 +93,24 @@ class DubbingViewModel(application: Application? = null) : ViewModel() {
         viewModelScope.launch {
             if (segments.isEmpty()) {
                 _statusText.value = "Danh sách phụ đề trống"
-                _dubbingProgress.value = 0f
+                _dubbingProgress.value = 0
                 return@launch
             }
 
             _isDubbing.value = true
-            _dubbingProgress.value = 0f
+            _dubbingProgress.value = 0
+            val total = segments.size
 
             val service = voiceDubbingService
             if (service != null) {
                 val results = service.synthesizeSegmentsInBatches(
                     segments = segments,
                     config = currentConfig
-                ) { pct, msg ->
-                    _dubbingProgress.value = pct * 100f
-                    _statusText.value = msg
+                ) { pct, _ ->
+                    val current = (pct * total).toInt().coerceIn(1, total)
+                    val percentInt = (pct * 100).toInt().coerceIn(0, 100)
+                    _dubbingProgress.value = percentInt
+                    _statusText.value = "Đang tạo giọng đọc $current/$total câu - $percentInt%"
                 }
                 _generatedAudioFiles.value = results.map { it.second }
             } else {
@@ -115,6 +119,7 @@ class DubbingViewModel(application: Application? = null) : ViewModel() {
             }
 
             _isDubbing.value = false
+            _dubbingProgress.value = 100
             _statusText.value = "Tạo lồng tiếng hoàn tất!"
         }
     }
@@ -122,6 +127,7 @@ class DubbingViewModel(application: Application? = null) : ViewModel() {
     fun stopDubbing() {
         voiceDubbingService?.stopSpeaking()
         _isDubbing.value = false
+        _dubbingProgress.value = 0
         _statusText.value = "Đã dừng lồng tiếng"
     }
 

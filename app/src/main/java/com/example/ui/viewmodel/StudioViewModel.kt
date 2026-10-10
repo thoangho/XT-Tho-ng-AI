@@ -17,6 +17,7 @@ import com.example.data.network.TranslationService
 import com.example.data.repository.TranslationRepository
 import com.example.data.subtitle.SubtitleFileService
 import com.example.data.tts.VoiceDubbingService
+import com.example.data.video.AudioExtractorHelper
 import com.example.data.video.FFmpegOptions
 import com.example.data.video.VideoExportService
 import com.example.data.video.VideoImportService
@@ -75,6 +76,7 @@ data class StudioUiState(
     val isDubbingPlaying: Boolean = false,
     val isDubbingGenerating: Boolean = false,
     val dubbingGenerationProgress: Float = 0f,
+    val dubbingProgressInt: Int = 0,
     val dubbingStatusMessage: String = "",
     val lastGeneratedAudioFile: File? = null,
     val hasVideoLoaded: Boolean = false,
@@ -93,6 +95,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _uiState = MutableStateFlow(StudioUiState())
     val uiState: StateFlow<StudioUiState> = _uiState.asStateFlow()
+
+    private val _dubbingProgress = MutableStateFlow(0)
+    val dubbingProgress: StateFlow<Int> = _dubbingProgress.asStateFlow()
+
+    private val _dubbingStatusText = MutableStateFlow("Sẵn sàng")
+    val dubbingStatusText: StateFlow<String> = _dubbingStatusText.asStateFlow()
 
     private var renderJob: Job? = null
     private var playbackJob: Job? = null
@@ -751,6 +759,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     it.copy(
                         segments = result.segments,
                         translationSuccessful = true,
+                        isSubtitlesConfirmed = true,
                         currentPlaybackTimeMs = 0,
                         isPlaying = false,
                         isProcessing = false,
@@ -883,10 +892,17 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
 
-        val approvedSegs = _uiState.value.segments.filter { it.isApproved && it.vietnameseText.isNotBlank() }
+        var approvedSegs = _uiState.value.segments.filter { it.isApproved && it.vietnameseText.isNotBlank() }
         if (approvedSegs.isEmpty()) {
-            Toast.makeText(getApplication(), "Chưa có phụ đề tiếng Việt nào được duyệt!", Toast.LENGTH_SHORT).show()
-            showNotice("⚠️ Chưa có phụ đề tiếng Việt nào được duyệt! Vui lòng xác nhận phụ đề ở tab 'Bảng phụ đề' trước khi đọc.")
+            approvedSegs = _uiState.value.segments.filter { it.vietnameseText.isNotBlank() }
+            if (approvedSegs.isNotEmpty()) {
+                confirmAndApproveAllSubtitles()
+            }
+        }
+
+        if (approvedSegs.isEmpty()) {
+            Toast.makeText(getApplication(), "Chưa có phụ đề tiếng Việt nào để lồng tiếng!", Toast.LENGTH_SHORT).show()
+            showNotice("⚠️ Chưa có phụ đề tiếng Việt nào! Vui lòng dịch hoặc nạp tệp .SRT trước khi lồng tiếng.")
             _uiState.update { it.copy(selectedTab = 1) }
             return
         }
@@ -897,52 +913,66 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         lastSpokenSegmentId = null
 
         val totalCount = approvedSegs.size
-        dubbingGenerationJob = viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    isDubbingGenerating = true,
-                    isDubbingPlaying = false,
-                    dubbingGenerationProgress = 0.05f,
-                    dubbingStatusMessage = "Đang tạo giọng đọc 1/$totalCount câu - 5%"
-                )
-            }
+        _dubbingProgress.value = 0
+        _dubbingStatusText.value = "Đang khởi tạo giọng đọc 1/$totalCount câu - 0%"
+        _uiState.update {
+            it.copy(
+                isDubbingGenerating = true,
+                isDubbingPlaying = false,
+                dubbingGenerationProgress = 0f,
+                dubbingProgressInt = 0,
+                dubbingStatusMessage = "Đang khởi tạo giọng đọc 1/$totalCount câu - 0%"
+            )
+        }
 
+        dubbingGenerationJob = viewModelScope.launch {
             try {
                 val dubbedAudioFiles = dubbingService.synthesizeSegmentsInBatches(
                     segments = approvedSegs,
                     config = project.dubbingConfig
-                ) { pct, msg ->
+                ) { pct, _ ->
                     val currentCount = (pct * totalCount).toInt().coerceIn(1, totalCount)
-                    val percentInt = (pct * 100).toInt().coerceIn(5, 100)
+                    val percentInt = (pct * 100).toInt().coerceIn(0, 100)
+                    val statusFormatted = "Đang tạo giọng đọc $currentCount/$totalCount câu - $percentInt%"
+                    _dubbingProgress.value = percentInt
+                    _dubbingStatusText.value = statusFormatted
                     _uiState.update {
                         it.copy(
                             dubbingGenerationProgress = pct,
-                            dubbingStatusMessage = "Đang tạo giọng đọc $currentCount/$totalCount câu - $percentInt%"
+                            dubbingProgressInt = percentInt,
+                            dubbingStatusMessage = statusFormatted
                         )
                     }
                 }
 
+                _dubbingProgress.value = 100
+                _dubbingStatusText.value = "Hoàn tất tạo giọng đọc $totalCount câu - 100%"
                 _uiState.update {
                     it.copy(
                         isDubbingGenerating = false,
                         isDubbingPlaying = false,
                         dubbingGenerationProgress = 1.0f,
-                        dubbingStatusMessage = "Hoàn tất tạo giọng đọc $totalCount câu!"
+                        dubbingProgressInt = 100,
+                        dubbingStatusMessage = "Hoàn tất tạo giọng đọc $totalCount câu!",
+                        lastGeneratedAudioFile = dubbedAudioFiles.firstOrNull()?.second
                     )
                 }
 
                 Toast.makeText(
                     getApplication(),
-                    "Lồng tiếng AI hoàn tất! Đã tạo thành công ${dubbedAudioFiles.size} câu thoại.",
+                    "Lồng tiếng AI hoàn tất! Đã tạo thành công ${dubbedAudioFiles.size}/$totalCount câu thoại.",
                     Toast.LENGTH_LONG
                 ).show()
-                showNotice("🎉 Lồng tiếng AI hoàn tất! Đã tạo thành công ${dubbedAudioFiles.size} tệp âm thanh.")
+                showNotice("🎉 Lồng tiếng AI hoàn tất! Đã tạo thành công ${dubbedAudioFiles.size}/$totalCount tệp âm thanh.")
             } catch (e: Exception) {
+                _dubbingProgress.value = 0
+                _dubbingStatusText.value = "Thất bại khi tạo lồng tiếng"
                 _uiState.update {
                     it.copy(
                         isDubbingGenerating = false,
                         isDubbingPlaying = false,
                         dubbingGenerationProgress = 0f,
+                        dubbingProgressInt = 0,
                         dubbingStatusMessage = "Thất bại khi tạo lồng tiếng"
                     )
                 }
@@ -957,10 +987,14 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         dubbingGenerationJob?.cancel()
         playbackJob?.cancel()
         dubbingService.stopSpeaking()
+        _dubbingProgress.value = 0
+        _dubbingStatusText.value = "Đã dừng lồng tiếng"
         _uiState.update {
             it.copy(
                 isDubbingGenerating = false,
                 isDubbingPlaying = false,
+                dubbingGenerationProgress = 0f,
+                dubbingProgressInt = 0,
                 dubbingStatusMessage = "Đã dừng lồng tiếng"
             )
         }
@@ -1171,23 +1205,56 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 val currentSegments = _uiState.value.segments.ifEmpty {
                     subtitleDao.getSubtitlesList(project.id)
                 }
-                val rawSource = currentSegments
+                var rawSource = currentSegments
+
+                if (rawSource.isEmpty()) {
+                    // Kiểm tra tệp video thực tế trên máy để bóc tách âm thanh và gọi Gemini Speech-to-Text
+                    val videoFile = File(project.videoUri)
+                    if (videoFile.exists() && effectiveApiKey != null) {
+                        addLog("[1/2] Bóc tách luồng âm thanh thực tế từ tệp video...")
+                        _uiState.update {
+                            it.copy(
+                                processingStage = 1,
+                                processingStageTitle = "[1/2] Bóc tách âm thanh video...",
+                                processingProgress = 0.2f
+                            )
+                        }
+                        val extracted = AudioExtractorHelper.extractAudioFromVideo(getApplication(), videoFile)
+                        if (extracted != null && extracted.audioFile.exists()) {
+                            addLog("-> Đã tách xong âm thanh (${extracted.durationMs / 1000}s). Đang gửi luồng Audio lên Gemini 2.5 Flash để bóc tách lời thoại & tạo phụ đề...")
+                            _uiState.update {
+                                it.copy(
+                                    processingProgress = 0.35f,
+                                    processingStageTitle = "[1/2] Gemini AI đang phân tích âm thanh & dịch..."
+                                )
+                            }
+                            val transcribedSegments = TranslationService.transcribeAndTranslateAudioWithGemini(
+                                audioFile = extracted.audioFile,
+                                userApiKey = effectiveApiKey,
+                                videoTitle = project.title,
+                                projectId = project.id
+                            )
+                            if (!transcribedSegments.isNullOrEmpty()) {
+                                addLog("✅ Gemini 2.5 Flash đã bóc tách thành công ${transcribedSegments.size} câu phụ đề kèm mốc thời gian từ âm thanh video!")
+                                rawSource = transcribedSegments
+                            }
+                        }
+                    }
+                }
 
                 if (rawSource.isEmpty()) {
                     _uiState.update {
                         it.copy(
                             isProcessing = false,
                             errorAlertTitle = "Chưa có phụ đề",
-                            errorAlertMessage = "Video chưa có dữ liệu phụ đề để dịch. Vui lòng nạp tệp phụ đề .SRT hoặc nhập video có kèm phụ đề."
+                            errorAlertMessage = "Video chưa có dữ liệu phụ đề để dịch. Vui lòng nạp tệp phụ đề .SRT hoặc nhập video có kèm âm thanh lời thoại."
                         )
                     }
-                    showNotice("⚠️ Chưa có phụ đề trong video! Vui lòng nạp tệp .SRT trước.")
+                    showNotice("⚠️ Chưa có phụ đề trong video! Vui lòng nạp tệp .SRT hoặc kiểm tra âm thanh video.")
                     return@launch
                 }
 
-                addLog("[1/2] Phân tích luồng câu thoại theo thời lượng video...")
-                delay(300)
-                addLog("-> Đã trích xuất ${rawSource.size} câu thoại chuẩn thời lượng.")
+                addLog("-> Đã nạp ${rawSource.size} câu thoại chuẩn thời lượng.")
                 _uiState.update {
                     it.copy(
                         processingStage = 2,
@@ -1320,18 +1387,25 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 val dubbedAudioFiles = dubbingService.synthesizeSegmentsInBatches(
                     segments = segments,
                     config = dubConfig
-                ) { pct, msg ->
+                ) { pct, _ ->
+                    val currentCount = (pct * segments.size).toInt().coerceIn(1, segments.size)
+                    val percentInt = (pct * 100).toInt().coerceIn(0, 100)
+                    val statusFormatted = "Đang tạo giọng đọc $currentCount/${segments.size} câu - $percentInt%"
+                    _dubbingProgress.value = percentInt
+                    _dubbingStatusText.value = statusFormatted
                     _uiState.update {
                         it.copy(
-                            dubbingGenerationProgress = 0.05f + pct * 0.85f,
-                            dubbingStatusMessage = msg
+                            dubbingGenerationProgress = pct,
+                            dubbingProgressInt = percentInt,
+                            dubbingStatusMessage = statusFormatted
                         )
                     }
                 }
 
                 _uiState.update {
                     it.copy(
-                        dubbingGenerationProgress = 0.92f,
+                        dubbingGenerationProgress = 0.95f,
+                        dubbingProgressInt = 95,
                         dubbingStatusMessage = "Đang đồng bộ ghép nối các đoạn thoại thành tệp audio .WAV hoàn chỉnh..."
                     )
                 }
@@ -1342,24 +1416,33 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     audioFiles = dubbedAudioFiles
                 )
 
+                _dubbingProgress.value = 100
+                _dubbingStatusText.value = "Hoàn tất tạo tệp lồng tiếng!"
                 _uiState.update {
                     it.copy(
                         isDubbingGenerating = false,
                         dubbingGenerationProgress = 1.0f,
+                        dubbingProgressInt = 100,
                         dubbingStatusMessage = "Hoàn tất tạo tệp lồng tiếng!",
                         lastGeneratedAudioFile = masterAudioFile
                     )
                 }
 
+                Toast.makeText(getApplication(), "Lồng tiếng AI hoàn tất! Đã lưu: ${masterAudioFile.name}", Toast.LENGTH_LONG).show()
                 showNotice("🎙️ Đã tạo xong file âm thanh lồng tiếng độc lập: ${masterAudioFile.name} và lưu vào thư mục Download/XThoang_AI!")
             } catch (e: Exception) {
+                _dubbingProgress.value = 0
+                _dubbingStatusText.value = "Thất bại khi tạo lồng tiếng"
                 _uiState.update {
                     it.copy(
                         isDubbingGenerating = false,
+                        dubbingGenerationProgress = 0f,
+                        dubbingProgressInt = 0,
                         errorAlertTitle = "Lỗi tạo lồng tiếng",
                         errorAlertMessage = "Không thể tạo file lồng tiếng: ${e.localizedMessage ?: "Vui lòng thử lại"}"
                     )
                 }
+                Toast.makeText(getApplication(), "Thất bại khi tạo lồng tiếng: ${e.localizedMessage ?: "Vui lòng thử lại"}", Toast.LENGTH_LONG).show()
             }
         }
     }
