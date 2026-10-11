@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -415,16 +416,23 @@ fun SampleVideoPickerSheet(
                 shape = RoundedCornerShape(16.dp),
                 color = StudioBgDark,
                 border = androidx.compose.foundation.BorderStroke(1.dp, StudioBorder),
-                modifier = Modifier.padding(16.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .wrapContentHeight()
+                    .padding(8.dp)
+                    .testTag("create_manual_project_dialog")
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .wrapContentHeight()
+                        .padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Text(
                         text = "Tạo khung video thủ công",
                         color = Color.White,
-                        fontSize = 15.sp,
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
                     )
 
@@ -433,7 +441,9 @@ fun SampleVideoPickerSheet(
                         onValueChange = { manualTitle = it },
                         label = { Text("Tiêu đề video") },
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("manual_project_title_input"),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = StudioCyan,
                             unfocusedBorderColor = StudioBorder,
@@ -447,7 +457,9 @@ fun SampleVideoPickerSheet(
                         onValueChange = { manualDuration = it.filter { ch -> ch.isDigit() } },
                         label = { Text("Thời lượng (giây)") },
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("manual_project_duration_input"),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = StudioCyan,
                             unfocusedBorderColor = StudioBorder,
@@ -456,36 +468,88 @@ fun SampleVideoPickerSheet(
                         )
                     )
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    // NHÓM CHỌN TỈ LỆ KHUNG HÌNH (CẤU TRÚC HÀNG DỌC / VERTICAL COLUMN)
+                    Text(
+                        text = "Tỉ lệ khung hình:",
+                        color = Color.White.copy(alpha = 0.85f),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        RadioButton(
-                            selected = isVertical,
-                            onClick = { isVertical = true },
-                            colors = RadioButtonDefaults.colors(selectedColor = StudioCyan)
-                        )
-                        Text("Dọc 9:16 (TikTok/Shorts)", color = Color.White, fontSize = 12.sp)
+                        // Tùy chọn 1: Dọc 9:16 (TikTok/Shorts)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { isVertical = true }
+                                .padding(vertical = 4.dp, horizontal = 2.dp)
+                                .testTag("ratio_option_vertical"),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            RadioButton(
+                                selected = isVertical,
+                                onClick = { isVertical = true },
+                                colors = RadioButtonDefaults.colors(
+                                    selectedColor = StudioCyan,
+                                    unselectedColor = Color.White.copy(alpha = 0.6f)
+                                )
+                            )
+                            Text(
+                                text = "Dọc 9:16 (TikTok/Shorts)",
+                                color = if (isVertical) StudioCyan else Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = if (isVertical) FontWeight.SemiBold else FontWeight.Normal
+                            )
+                        }
 
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        RadioButton(
-                            selected = !isVertical,
-                            onClick = { isVertical = false },
-                            colors = RadioButtonDefaults.colors(selectedColor = StudioCyan)
-                        )
-                        Text("Ngang 16:9", color = Color.White, fontSize = 12.sp)
+                        // Tùy chọn 2: Ngang 16:9 (YouTube)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { isVertical = false }
+                                .padding(vertical = 4.dp, horizontal = 2.dp)
+                                .testTag("ratio_option_horizontal"),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            RadioButton(
+                                selected = !isVertical,
+                                onClick = { isVertical = false },
+                                colors = RadioButtonDefaults.colors(
+                                    selectedColor = StudioCyan,
+                                    unselectedColor = Color.White.copy(alpha = 0.6f)
+                                )
+                            )
+                            Text(
+                                text = "Ngang 16:9 (YouTube)",
+                                color = if (!isVertical) StudioCyan else Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = if (!isVertical) FontWeight.SemiBold else FontWeight.Normal
+                            )
+                        }
                     }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         OutlinedButton(
                             onClick = { showManualDialog = false },
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                                .testTag("cancel_manual_project_button"),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, StudioBorder)
                         ) {
-                            Text("Hủy", color = Color.White)
+                            Text("Hủy", color = Color.White, fontSize = 13.sp)
                         }
                         Button(
                             onClick = {
@@ -494,10 +558,14 @@ fun SampleVideoPickerSheet(
                                 showManualDialog = false
                                 onDismiss()
                             },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                                .testTag("confirm_manual_project_button"),
+                            shape = RoundedCornerShape(10.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = StudioCyan)
                         ) {
-                            Text("Tạo", color = StudioBgDark, fontWeight = FontWeight.Bold)
+                            Text("Tạo", color = StudioBgDark, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
                     }
                 }
