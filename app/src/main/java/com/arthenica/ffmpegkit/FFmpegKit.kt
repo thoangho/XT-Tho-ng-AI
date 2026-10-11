@@ -65,6 +65,15 @@ object FFmpegKit {
         val outputFile = File(outputPath)
         outputFile.parentFile?.mkdirs()
 
+        // 0. Trường hợp ghép nối file qua concat list (-f concat -i concat_list.txt)
+        val isConcat = args.contains("concat") || args.any { it.contains("concat") }
+        if (isConcat && inputPaths.isNotEmpty()) {
+            val listFile = File(inputPaths[0])
+            if (listFile.exists() && (listFile.name.endsWith(".txt") || listFile.extension == "txt")) {
+                return concatenateFilesFromList(listFile, outputFile)
+            }
+        }
+
         // 1. Trường hợp trộn 2 luồng: Video từ tệp 1 và Audio từ tệp 2 (-i video -i audio -map 0:v:0 -map 1:a:0)
         if (inputPaths.size >= 2) {
             val videoFile = File(inputPaths[0])
@@ -230,6 +239,104 @@ object FFmpegKit {
             try { videoExtractor?.release() } catch (_: Exception) {}
             try { audioExtractor?.release() } catch (_: Exception) {}
             try { muxer?.release() } catch (_: Exception) {}
+        }
+    }
+
+    /**
+     * BƯỚC 0: Ghép nối danh sách các tệp âm thanh từ file danh sách concat_list.txt
+     */
+    private fun concatenateFilesFromList(listFile: File, outputFile: File): Boolean {
+        return try {
+            val lines = listFile.readLines()
+            val filesToConcat = mutableListOf<File>()
+            for (line in lines) {
+                val trimmed = line.trim()
+                if (trimmed.isEmpty() || trimmed.startsWith("#")) continue
+                val filePath = trimmed.removePrefix("file").trim().trim('\'', '"')
+                val f = File(filePath)
+                val targetFile = if (f.isAbsolute) f else File(listFile.parentFile, filePath)
+                if (targetFile.exists() && targetFile.length() > 0) {
+                    filesToConcat.add(targetFile)
+                }
+            }
+
+            if (filesToConcat.isEmpty()) {
+                Log.e(TAG, "Không tìm thấy tệp hợp lệ trong danh sách concat: ${listFile.absolutePath}")
+                return false
+            }
+
+            val isWav = filesToConcat.all { it.name.endsWith(".wav", ignoreCase = true) || it.length() >= 44 }
+            if (isWav) {
+                // Ghép các tệp WAV/PCM: Tổng hợp dữ liệu PCM và ghi tiêu đề WAV chuẩn
+                val firstFileBytes = filesToConcat[0].readBytes()
+                val sampleRate = if (firstFileBytes.size >= 28) {
+                    ByteBuffer.wrap(firstFileBytes, 24, 4).order(ByteOrder.LITTLE_ENDIAN).int
+                } else 24000
+                val channels = if (firstFileBytes.size >= 24) {
+                    ByteBuffer.wrap(firstFileBytes, 22, 2).order(ByteOrder.LITTLE_ENDIAN).short.toInt()
+                } else 1
+
+                var totalPcmBytes = 0
+                val pcmBuffers = mutableListOf<ByteArray>()
+                for (f in filesToConcat) {
+                    val bytes = f.readBytes()
+                    val pcm = if (bytes.size > 44) bytes.copyOfRange(44, bytes.size) else bytes
+                    pcmBuffers.add(pcm)
+                    totalPcmBytes += pcm.size
+                }
+
+                FileOutputStream(outputFile).use { fos ->
+                    // Ghi WAV Header 44 bytes
+                    val header = ByteArray(44)
+                    val totalDataLen = totalPcmBytes + 36
+                    val byteRate = sampleRate * channels * 2
+
+                    header[0] = 'R'.code.toByte(); header[1] = 'I'.code.toByte(); header[2] = 'F'.code.toByte(); header[3] = 'F'.code.toByte()
+                    header[4] = (totalDataLen and 0xff).toByte()
+                    header[5] = ((totalDataLen shr 8) and 0xff).toByte()
+                    header[6] = ((totalDataLen shr 16) and 0xff).toByte()
+                    header[7] = ((totalDataLen shr 24) and 0xff).toByte()
+                    header[8] = 'W'.code.toByte(); header[9] = 'A'.code.toByte(); header[10] = 'V'.code.toByte(); header[11] = 'E'.code.toByte()
+                    header[12] = 'f'.code.toByte(); header[13] = 'm'.code.toByte(); header[14] = 't'.code.toByte(); header[15] = ' '.code.toByte()
+                    header[16] = 16; header[17] = 0; header[18] = 0; header[19] = 0 // Subchunk1Size
+                    header[20] = 1; header[21] = 0 // PCM format = 1
+                    header[22] = (channels and 0xff).toByte(); header[23] = ((channels shr 8) and 0xff).toByte()
+                    header[24] = (sampleRate and 0xff).toByte()
+                    header[25] = ((sampleRate shr 8) and 0xff).toByte()
+                    header[26] = ((sampleRate shr 16) and 0xff).toByte()
+                    header[27] = ((sampleRate shr 24) and 0xff).toByte()
+                    header[28] = (byteRate and 0xff).toByte()
+                    header[29] = ((byteRate shr 8) and 0xff).toByte()
+                    header[30] = ((byteRate shr 16) and 0xff).toByte()
+                    header[31] = ((byteRate shr 24) and 0xff).toByte()
+                    header[32] = (channels * 2).toByte(); header[33] = 0 // BlockAlign
+                    header[34] = 16; header[35] = 0 // BitsPerSample
+                    header[36] = 'd'.code.toByte(); header[37] = 'a'.code.toByte(); header[38] = 't'.code.toByte(); header[39] = 'a'.code.toByte()
+                    header[40] = (totalPcmBytes and 0xff).toByte()
+                    header[41] = ((totalPcmBytes shr 8) and 0xff).toByte()
+                    header[42] = ((totalPcmBytes shr 16) and 0xff).toByte()
+                    header[43] = ((totalPcmBytes shr 24) and 0xff).toByte()
+
+                    fos.write(header)
+                    for (pcm in pcmBuffers) {
+                        fos.write(pcm)
+                    }
+                }
+            } else {
+                FileOutputStream(outputFile).use { fos ->
+                    for (f in filesToConcat) {
+                        FileInputStream(f).use { fis ->
+                            fis.copyTo(fos)
+                        }
+                    }
+                }
+            }
+
+            Log.d(TAG, "Ghép nối thành công ${filesToConcat.size} tệp vào ${outputFile.name} (${outputFile.length()} bytes)")
+            outputFile.exists() && outputFile.length() > 0L
+        } catch (e: Exception) {
+            Log.e(TAG, "Lỗi ghép nối tệp từ concat list: ${e.message}", e)
+            false
         }
     }
 

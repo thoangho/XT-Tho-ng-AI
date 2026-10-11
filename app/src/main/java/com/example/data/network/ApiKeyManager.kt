@@ -146,6 +146,13 @@ object ApiKeyManager {
                 list.add(clean)
             }
         }
+        // Fallback tự động: Nếu danh sách trên UI vẫn trống, lấy BuildConfig.GEMINI_API_KEY từ file .env
+        if (list.isEmpty()) {
+            val buildKey = sanitizeApiKey(com.example.BuildConfig.GEMINI_API_KEY)
+            if (buildKey.isNotBlank() && buildKey != "MY_GEMINI_API_KEY") {
+                list.add(buildKey)
+            }
+        }
         return list
     }
 

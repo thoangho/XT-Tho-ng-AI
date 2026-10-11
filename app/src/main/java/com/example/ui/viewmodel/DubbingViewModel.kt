@@ -124,6 +124,90 @@ class DubbingViewModel(application: Application? = null) : ViewModel() {
         }
     }
 
+    /**
+     * Ghép danh sách các tệp âm thanh lồng tiếng vào video gốc bằng lệnh FFmpeg:
+     * 1. Sinh danh sách concat_list.txt và ghép nối âm thanh thành master audio
+     * 2. Hòa trộn âm thanh lồng tiếng vào video gốc bằng FFmpeg:
+     *    ffmpeg -i input.mp4 -i dubbed.wav -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 output.mp4 -y
+     */
+    fun stitchDubbedAudioWithVideo(
+        context: Context,
+        inputVideo: File,
+        audioFiles: List<File>,
+        outputFile: File,
+        onComplete: (Boolean, File?) -> Unit
+    ) {
+        viewModelScope.launch {
+            if (!inputVideo.exists() || audioFiles.isEmpty()) {
+                _statusText.value = "Tệp video hoặc âm thanh không hợp lệ"
+                onComplete(false, null)
+                return@launch
+            }
+
+            _isDubbing.value = true
+            _statusText.value = "Bước 1/2: Đang ghép nối danh sách âm thanh lồng tiếng..."
+            _dubbingProgress.value = 30
+
+            val mergedAudioFile = withContext(Dispatchers.IO) {
+                try {
+                    val cacheDir = context.cacheDir
+                    val concatListFile = File(cacheDir, "concat_list_${System.currentTimeMillis()}.txt")
+                    val sb = StringBuilder()
+                    for (file in audioFiles) {
+                        if (file.exists() && file.length() > 0) {
+                            sb.append("file '${file.absolutePath}'\n")
+                        }
+                    }
+                    concatListFile.writeText(sb.toString())
+
+                    val masterAudio = File(cacheDir, "master_dubbed_${System.currentTimeMillis()}.wav")
+                    val concatCmd = "-f concat -safe 0 -i \"${concatListFile.absolutePath}\" -c copy \"${masterAudio.absolutePath}\" -y"
+                    val session = com.arthenica.ffmpegkit.FFmpegKit.execute(concatCmd)
+
+                    concatListFile.delete()
+
+                    if (com.arthenica.ffmpegkit.ReturnCode.isSuccess(session.returnCode) && masterAudio.exists()) {
+                        masterAudio
+                    } else {
+                        // Fallback: nếu chỉ có 1 file
+                        audioFiles.firstOrNull { it.exists() }
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("DubbingVM", "Lỗi ghép audio: ${e.message}", e)
+                    null
+                }
+            }
+
+            if (mergedAudioFile == null || !mergedAudioFile.exists()) {
+                _isDubbing.value = false
+                _statusText.value = "Lỗi ghép nối âm thanh"
+                onComplete(false, null)
+                return@launch
+            }
+
+            _statusText.value = "Bước 2/2: Đang hòa trộn âm thanh vào video qua FFmpeg..."
+            _dubbingProgress.value = 70
+
+            val success = withContext(Dispatchers.IO) {
+                try {
+                    val mergeCmd = "-i \"${inputVideo.absolutePath}\" -i \"${mergedAudioFile.absolutePath}\" -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 \"${outputFile.absolutePath}\" -y"
+                    val session = com.arthenica.ffmpegkit.FFmpegKit.execute(mergeCmd)
+                    com.arthenica.ffmpegkit.ReturnCode.isSuccess(session.returnCode) && outputFile.exists() && outputFile.length() > 0
+                } catch (e: Exception) {
+                    android.util.Log.e("DubbingVM", "Lỗi merge video & audio: ${e.message}", e)
+                    false
+                } finally {
+                    mergedAudioFile.delete()
+                }
+            }
+
+            _isDubbing.value = false
+            _dubbingProgress.value = if (success) 100 else 0
+            _statusText.value = if (success) "Hoàn tất ghép video lồng tiếng!" else "Ghép video thất bại"
+            onComplete(success, if (success) outputFile else null)
+        }
+    }
+
     fun stopDubbing() {
         voiceDubbingService?.stopSpeaking()
         _isDubbing.value = false
