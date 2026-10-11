@@ -68,8 +68,8 @@ fun MaskControlsCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             // Header
             Row(
@@ -88,7 +88,7 @@ fun MaskControlsCard(
                         modifier = Modifier.size(20.dp)
                     )
                     Text(
-                        text = "1. Che phụ đề gốc (Subtitle Masking)",
+                        text = "Che phụ đề gốc",
                         color = Color.White,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold
@@ -111,7 +111,7 @@ fun MaskControlsCard(
 
             // Aspect Ratio & Preset Height Buttons
             Text(
-                text = "Vị trí đặt dải che chuẩn tỉ lệ khung hình:",
+                text = "Tỉ lệ khung hình:",
                 color = Color.White.copy(alpha = 0.7f),
                 fontSize = 12.sp
             )

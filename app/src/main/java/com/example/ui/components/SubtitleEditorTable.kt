@@ -166,139 +166,63 @@ fun SubtitleEditorTable(
             modifier = modifier
                 .fillMaxWidth()
                 .testTag("subtitle_management_empty_container"),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(containerColor = StudioSurfaceCard),
             border = androidx.compose.foundation.BorderStroke(1.dp, StudioBorder)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Surface(
-                    shape = CircleShape,
-                    color = StudioCyan.copy(alpha = 0.15f),
-                    modifier = Modifier.size(56.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.TableChart,
-                            contentDescription = null,
-                            tint = StudioCyan,
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
-                }
-
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "Trang quản lý phụ đề",
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = "Vui lòng chọn 1 trong 2 phương thức dưới đây để tạo phụ đề:",
-                        color = Color.White.copy(alpha = 0.7f),
-                        fontSize = 12.sp,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
-                }
-
-                // Cung cấp 2 tính năng rõ rệt theo Nhiệm vụ 2
-                Column(
+                // Hàng ngang chứa 2 nút gọn: "✨ Dịch AI Auto" và "📁 Nạp .SRT"
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // TÍNH NĂNG 1: TỰ ĐỘNG DỊCH PHỤ ĐỀ BẰNG AI
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        color = StudioPurple.copy(alpha = 0.15f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, StudioPurple.copy(alpha = 0.6f))
+                    Button(
+                        onClick = onRetranslateAll,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = StudioPurple,
+                            contentColor = Color.White
+                        ),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(38.dp)
+                            .testTag("empty_state_translate_button")
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "1. Tự động dịch bằng AI",
-                                    color = Color.White,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "Whisper AI bóc tách tiếng gốc & Gemini dịch chuẩn ngữ cảnh",
-                                    color = Color.White.copy(alpha = 0.7f),
-                                    fontSize = 11.sp
-                                )
-                            }
-                            Button(
-                                onClick = onRetranslateAll,
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = StudioPurple,
-                                    contentColor = Color.White
-                                ),
-                                modifier = Modifier.testTag("empty_state_translate_button")
-                            ) {
-                                Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(15.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Dịch AI", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
+                        Text("✨ Dịch AI Auto", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
 
-                    // TÍNH NĂNG 2: TẢI LÊN FILE PHỤ ĐỀ CÓ SẴN (.SRT / .VTT)
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        color = StudioCyan.copy(alpha = 0.15f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, StudioCyan.copy(alpha = 0.6f))
+                    Button(
+                        onClick = onImportSubtitleFile,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = StudioCyan,
+                            contentColor = StudioBgDark
+                        ),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(38.dp)
+                            .testTag("empty_state_import_subtitle_button")
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "2. Tải lên file phụ đề (.srt / .vtt)",
-                                    color = Color.White,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "Tự động co giãn thời gian vừa khít 100% video",
-                                    color = StudioCyan,
-                                    fontSize = 11.sp
-                                )
-                            }
-                            Button(
-                                onClick = onImportSubtitleFile,
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = StudioCyan,
-                                    contentColor = StudioBgDark
-                                ),
-                                modifier = Modifier.testTag("empty_state_import_subtitle_button")
-                            ) {
-                                Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(15.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Tải file", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
+                        Text("📁 Nạp .SRT", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
+
+                Text(
+                    text = "Chưa có phụ đề. Bấm '✨ Dịch AI Auto' hoặc '📁 Nạp .SRT' để tạo câu thoại.",
+                    color = Color.White.copy(alpha = 0.6f),
+                    fontSize = 11.sp,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp)
+                )
             }
         }
         return
@@ -308,7 +232,7 @@ fun SubtitleEditorTable(
         modifier = modifier
             .fillMaxWidth()
             .testTag("subtitle_management_container"),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         // HAI TÍNH NĂNG TẠO PHỤ ĐỀ TRÊN CÙNG
         Row(
@@ -317,32 +241,34 @@ fun SubtitleEditorTable(
         ) {
             Button(
                 onClick = onRetranslateAll,
-                shape = RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(8.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = StudioPurple.copy(alpha = 0.85f),
+                    containerColor = StudioPurple,
                     contentColor = Color.White
                 ),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                modifier = Modifier.weight(1f)
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(38.dp)
+                    .testTag("top_retranslate_button")
             ) {
-                Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(15.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Dịch lại bằng AI", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text("✨ Dịch AI Auto", fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
 
             Button(
                 onClick = onImportSubtitleFile,
-                shape = RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(8.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = StudioCyan,
                     contentColor = StudioBgDark
                 ),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                modifier = Modifier.weight(1f)
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(38.dp)
+                    .testTag("top_import_subtitle_button")
             ) {
-                Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(15.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Tải file phụ đề", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text("📁 Nạp .SRT", fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
 

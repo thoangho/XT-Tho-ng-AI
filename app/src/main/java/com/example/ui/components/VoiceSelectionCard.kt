@@ -98,8 +98,8 @@ fun VoiceSelectionCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             // Header
             Row(
@@ -109,27 +109,20 @@ fun VoiceSelectionCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.RecordVoiceOver,
                         contentDescription = "Voice Dubbing",
                         tint = StudioCyan,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(18.dp)
                     )
-                    Column {
-                        Text(
-                            text = "Lồng tiếng AI Tiếng Việt",
-                            color = Color.White,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Tạo giọng nói AI tự nhiên dựa trên phụ đề đã duyệt",
-                            color = StudioCyan,
-                            fontSize = 11.sp
-                        )
-                    }
+                    Text(
+                        text = "Lồng tiếng AI Tiếng Việt",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
 
                 Button(
@@ -139,115 +132,106 @@ fun VoiceSelectionCard(
                         containerColor = StudioCyan.copy(alpha = 0.2f),
                         contentColor = StudioCyan
                     ),
-                    modifier = Modifier.testTag("test_voice_sample_button")
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.height(28.dp).testTag("test_voice_sample_button")
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.VolumeUp,
                         contentDescription = "Nghe thử",
-                        modifier = Modifier.size(15.dp)
+                        modifier = Modifier.size(14.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("Nghe thử", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
-            // TRẠNG THÁI KIỂM SOÁT PHỤ ĐỀ TRƯỚC KHI LỒNG TIẾNG (Mục tiêu 2)
+            // TRẠNG THÁI KIỂM SOÁT PHỤ ĐỀ TRƯỚC KHI LỒNG TIẾNG (Thu nhỏ card cảnh báo)
             if (!isSubtitlesConfirmed || approvedSegmentsCount == 0) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(8.dp),
                     color = StudioAmber.copy(alpha = 0.12f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, StudioAmber.copy(alpha = 0.5f))
+                    border = androidx.compose.foundation.BorderStroke(1.dp, StudioAmber.copy(alpha = 0.4f))
                 ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.weight(1f)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Warning,
                                 contentDescription = null,
                                 tint = StudioAmber,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                             Text(
                                 text = "Chưa có phụ đề tiếng Việt được duyệt",
                                 color = StudioAmber,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
                             )
                         }
-                        Text(
-                            text = "Tính năng này chỉ xử lý lồng tiếng dựa trên các dòng Text phụ đề tiếng Việt đã được người dùng xác nhận. Vui lòng chuyển sang Tab Phụ đề để dịch/chỉnh sửa và bấm 'Xác nhận/Duyệt' trước khi tạo giọng nói.",
-                            color = Color.White.copy(alpha = 0.8f),
-                            fontSize = 11.sp,
-                            lineHeight = 16.sp
-                        )
                         Button(
                             onClick = onGoToSubtitleTab,
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(6.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = StudioAmber,
                                 contentColor = StudioBgDark
                             ),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            modifier = Modifier.height(26.dp)
                         ) {
-                            Text("Chuyển sang Tab Phụ đề để duyệt", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            Spacer(Modifier.width(4.dp))
-                            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Text("Duyệt phụ đề", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
             } else {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(8.dp),
                     color = StudioGreen.copy(alpha = 0.12f),
                     border = androidx.compose.foundation.BorderStroke(1.dp, StudioGreen.copy(alpha = 0.5f))
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(12.dp),
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier.weight(1f)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.CheckCircle,
                                 contentDescription = null,
                                 tint = StudioGreen,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(16.dp)
                             )
-                            Column {
-                                Text(
-                                    text = "Đã chốt $approvedSegmentsCount câu phụ đề tiếng Việt",
-                                    color = StudioGreen,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "Sẵn sàng để AI đọc lồng tiếng theo đúng dữ liệu đã xác nhận",
-                                    color = Color.White.copy(alpha = 0.7f),
-                                    fontSize = 10.sp
-                                )
-                            }
+                            Text(
+                                text = "Đã chốt $approvedSegmentsCount câu phụ đề tiếng Việt",
+                                color = StudioGreen,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
 
                         OutlinedButton(
                             onClick = onGoToSubtitleTab,
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(6.dp),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
                             border = androidx.compose.foundation.BorderStroke(0.8.dp, StudioBorder),
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                            modifier = Modifier.height(28.dp)
+                            modifier = Modifier.height(26.dp)
                         ) {
                             Text("Sửa text", fontSize = 10.sp)
                         }
@@ -255,43 +239,64 @@ fun VoiceSelectionCard(
                 }
             }
 
-            // NÚT 'TẠO LỒNG TIẾNG / DỪNG ĐỌC LỒNG TIẾNG' (Lỗi 1)
+            // HÀNG NÚT HÀNH ĐỘNG: TẠO LỒNG TIẾNG VÀ NẠP .SRT ĐỨNG CẠNH NHAU
             val isDubbingActive = isDubbingGenerating || isDubbingPlaying
-            Button(
-                onClick = {
-                    if (isDubbingActive) {
-                        onStopDubbing()
-                    } else {
-                        onStartDubbing()
-                    }
-                },
-                enabled = approvedSegmentsCount > 0,
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isDubbingActive) StudioRed else StudioGreen,
-                    contentColor = if (isDubbingActive) Color.White else StudioBgDark,
-                    disabledContainerColor = StudioSurfaceCardHover,
-                    disabledContentColor = Color.White.copy(alpha = 0.4f)
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .testTag("start_dubbing_button")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = if (isDubbingActive) Icons.Default.Stop else Icons.Default.RecordVoiceOver,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = if (isDubbingActive) "Dừng đọc lồng tiếng" else "Tạo Lồng Tiếng",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Button(
+                    onClick = {
+                        if (isDubbingActive) {
+                            onStopDubbing()
+                        } else {
+                            onStartDubbing()
+                        }
+                    },
+                    enabled = approvedSegmentsCount > 0,
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isDubbingActive) StudioRed else StudioGreen,
+                        contentColor = if (isDubbingActive) Color.White else StudioBgDark,
+                        disabledContainerColor = StudioSurfaceCardHover,
+                        disabledContentColor = Color.White.copy(alpha = 0.4f)
+                    ),
+                    modifier = Modifier
+                        .weight(1.4f)
+                        .height(44.dp)
+                        .testTag("start_dubbing_button")
+                ) {
+                    Icon(
+                        imageVector = if (isDubbingActive) Icons.Default.Stop else Icons.Default.RecordVoiceOver,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (isDubbingActive) "Dừng đọc" else "Tạo Lồng Tiếng",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = onImportSrt,
+                    shape = RoundedCornerShape(10.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, StudioCyan.copy(alpha = 0.6f)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = StudioCyan),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                        .testTag("import_external_srt_button")
+                ) {
+                    Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Nạp .SRT", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
             }
 
-            // BỔ SUNG THANH TIẾN TRÌNH & TEXTVIEW HIỂN THỊ TỶ LỆ % TIẾN ĐỘ ĐỌC REAL-TIME (Lỗi 1)
+            // THANH TIẾN TRÌNH & TEXTVIEW HIỂN THỊ TỶ LỆ % TIẾN ĐỘ ĐỌC REAL-TIME
             if (isDubbingGenerating) {
                 val displayPercent = if (dubbingProgressInt > 0) dubbingProgressInt else (dubbingGenerationProgress * 100).toInt().coerceIn(0, 100)
                 Surface(
@@ -303,8 +308,8 @@ fun VoiceSelectionCard(
                     border = androidx.compose.foundation.BorderStroke(1.dp, StudioCyan.copy(alpha = 0.5f))
                 ) {
                     Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -344,100 +349,6 @@ fun VoiceSelectionCard(
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium,
                             modifier = Modifier.testTag("dubbing_status_text")
-                        )
-                    }
-                }
-            }
-
-            // HÀNG NÚT LUỒNG 2: TẠO LỒNG TIẾNG TỪ TỆP .SRT ĐỘC LẬP
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Button(
-                    onClick = onGenerateDubbingFromSrt,
-                    enabled = (isSubtitlesConfirmed && approvedSegmentsCount > 0) && !isDubbingGenerating,
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = StudioPurple,
-                        contentColor = Color.White,
-                        disabledContainerColor = StudioSurfaceCardHover,
-                        disabledContentColor = Color.White.copy(alpha = 0.4f)
-                    ),
-                    modifier = Modifier
-                        .weight(1.3f)
-                        .height(44.dp)
-                        .testTag("generate_dubbing_from_srt_button")
-                ) {
-                    Icon(Icons.Default.Audiotrack, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = if (isDubbingGenerating) "Đang xuất WAV..." else "Tạo Lồng Tiếng Từ SRT",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                OutlinedButton(
-                    onClick = onImportSrt,
-                    shape = RoundedCornerShape(10.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, StudioCyan.copy(alpha = 0.6f)),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = StudioCyan),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(44.dp)
-                        .testTag("import_external_srt_button")
-                ) {
-                    Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Nạp .SRT máy", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-
-            // TIẾN TRÌNH TẠO FILE LỒNG TIẾNG AI ĐỘC LẬP (LUỒNG 2)
-            if (isDubbingGenerating) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp),
-                    color = StudioPurple.copy(alpha = 0.15f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, StudioPurple.copy(alpha = 0.5f))
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Tiến trình tạo tệp Lồng tiếng AI:",
-                                color = StudioPurpleLight,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "${(dubbingGenerationProgress * 100).toInt()}%",
-                                color = Color.White,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        LinearProgressIndicator(
-                            progress = { dubbingGenerationProgress },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(6.dp)
-                                .clip(RoundedCornerShape(3.dp)),
-                            color = StudioPurple,
-                            trackColor = StudioSurfaceCardHover
-                        )
-                        Text(
-                            text = dubbingStatusMessage,
-                            color = Color.White.copy(alpha = 0.85f),
-                            fontSize = 11.sp,
-                            lineHeight = 15.sp
                         )
                     }
                 }

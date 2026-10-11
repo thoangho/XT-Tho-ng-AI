@@ -189,12 +189,6 @@ fun StudioMainScreen(
                                 softWrap = false
                             )
                         }
-
-                        // Badge Pin: Ràng buộc xếp song song bên phải Tên app, tuyệt đối không đè tên thương hiệu (Lỗi 2)
-                        BatteryIndicatorBadge(
-                            batteryInfo = state.batteryInfo,
-                            onClick = { viewModel.refreshBatteryStatus() }
-                        )
                     }
                 },
                 actions = {
