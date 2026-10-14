@@ -38,17 +38,10 @@ object TranslationService {
     }
 
     /**
-     * Lấy danh sách các API Key hợp lệ (kể cả nhiều key từ người dùng hoặc BuildConfig)
+     * Lấy danh sách các API Key hợp lệ (kể cả nhiều key từ người dùng, SharedPreferences hoặc BuildConfig)
      */
     fun getEffectiveApiKeys(userKey: String?): List<String> {
-        val parsed = ApiKeyManager.parseApiKeys(userKey)
-        val buildKey = ApiKeyManager.sanitizeApiKey(BuildConfig.GEMINI_API_KEY)
-        val combined = mutableListOf<String>()
-        combined.addAll(parsed)
-        if (buildKey.isNotBlank() && buildKey != "MY_GEMINI_API_KEY" && !combined.contains(buildKey)) {
-            combined.add(buildKey)
-        }
-        return combined
+        return ApiKeyManager.getActiveApiKeys(null, userKey)
     }
 
     fun getEffectiveApiKey(userKey: String?): String? {

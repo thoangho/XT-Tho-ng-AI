@@ -21,6 +21,10 @@ object ApiKeyManager {
     // Atomic / thread-safe round-robin counter for rotating keys
     private val keyRotationIndex = java.util.concurrent.atomic.AtomicInteger(0)
 
+    // In-memory cache to ensure dynamic keys are available immediately across all background services
+    @Volatile
+    private var inMemoryCachedKeys: List<String> = emptyList()
+
     private val httpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(12, TimeUnit.SECONDS)
@@ -121,7 +125,15 @@ object ApiKeyManager {
     /**
      * Lấy danh sách tất cả các Gemini API Key người dùng đã nạp
      */
-    fun getSavedApiKeys(context: Context): List<String> {
+    fun getSavedApiKeys(context: Context? = null): List<String> {
+        if (context == null) {
+            if (inMemoryCachedKeys.isNotEmpty()) {
+                return inMemoryCachedKeys
+            }
+            val buildKey = sanitizeApiKey(com.example.BuildConfig.GEMINI_API_KEY)
+            return if (buildKey.isNotBlank() && buildKey != "MY_GEMINI_API_KEY") listOf(buildKey) else emptyList()
+        }
+
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val jsonStr = prefs.getString(KEY_GEMINI_API_KEYS_LIST, null)
         val list = mutableListOf<String>()
@@ -153,16 +165,43 @@ object ApiKeyManager {
                 list.add(buildKey)
             }
         }
+        inMemoryCachedKeys = list
         return list
     }
 
     /**
-     * Lưu danh sách nhiều API Key vào SharedPreferences
+     * Tổng hợp toàn bộ API Key đang hoạt động:
+     * 1. Key người dùng vừa nhập từ UI / truyền vào
+     * 2. Key đã lưu trong SharedPreferences / Cache bộ nhớ
+     * 3. Key mặc định từ BuildConfig
+     */
+    fun getActiveApiKeys(context: Context? = null, userKeyInput: String? = null): List<String> {
+        val combined = mutableListOf<String>()
+        val parsedInput = parseApiKeys(userKeyInput)
+        combined.addAll(parsedInput)
+
+        val saved = getSavedApiKeys(context)
+        for (k in saved) {
+            if (!combined.contains(k)) {
+                combined.add(k)
+            }
+        }
+
+        val buildKey = sanitizeApiKey(com.example.BuildConfig.GEMINI_API_KEY)
+        if (buildKey.isNotBlank() && buildKey != "MY_GEMINI_API_KEY" && !combined.contains(buildKey)) {
+            combined.add(buildKey)
+        }
+        return combined
+    }
+
+    /**
+     * Lưu danh sách nhiều API Key vào SharedPreferences và cập nhật cache tức thì
      */
     fun saveApiKeys(context: Context, keys: List<String>) {
         val cleanKeys = keys.map { sanitizeApiKey(it) }
             .filter { it.isNotBlank() && it != "MY_GEMINI_API_KEY" }
             .distinct()
+        inMemoryCachedKeys = cleanKeys
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val jsonArray = JSONArray()
         cleanKeys.forEach { jsonArray.put(it) }
@@ -241,6 +280,7 @@ object ApiKeyManager {
     }
 
     fun clearApiKey(context: Context) {
+        inMemoryCachedKeys = emptyList()
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit()
             .remove(KEY_GEMINI_API)

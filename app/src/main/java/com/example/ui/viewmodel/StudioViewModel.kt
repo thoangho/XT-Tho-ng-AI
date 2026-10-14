@@ -660,7 +660,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         val project = _uiState.value.activeProject
-        val effectiveApiKey = TranslationService.getEffectiveApiKey(_uiState.value.userApiKey)
+        val userApiKeyInput = _uiState.value.userApiKey
         val videoCategory = "Ẩm thực, hài kịch & Đời sống Douyin"
 
         viewModelScope.launch {
@@ -675,7 +675,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 val updatedList = TranslationService.translateBatchSegments(
                     segments = segments,
-                    userApiKey = effectiveApiKey,
+                    userApiKey = userApiKeyInput,
                     videoTitle = project?.title ?: "Video ngắn",
                     videoCategory = videoCategory
                 ) { pct, msg ->
@@ -1186,8 +1186,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         // Module 1: API Key Check & Engine Selection
-        val effectiveApiKey = TranslationService.getEffectiveApiKey(_uiState.value.userApiKey)
-        val engineName = if (effectiveApiKey != null) "XThoáng AI (Gemini 2.5 Flash)" else "Google Neural Direct (Không cần Key)"
+        val userApiKeyInput = _uiState.value.userApiKey
+        val hasConfiguredKey = TranslationService.hasConfiguredApiKey(userApiKeyInput)
+        val engineName = if (hasConfiguredKey) "XThoáng AI (Gemini 2.5 Flash)" else "Google Neural Direct (Không cần Key)"
 
         viewModelScope.launch {
             _uiState.update {
@@ -1209,8 +1210,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
                 if (rawSource.isEmpty()) {
                     // Kiểm tra tệp video thực tế trên máy để bóc tách âm thanh và gọi Gemini Speech-to-Text
-                    val videoFile = File(project.videoUri)
-                    if (videoFile.exists() && effectiveApiKey != null) {
+                    val videoPath = if (project.videoUri.startsWith("file://")) project.videoUri.removePrefix("file://") else project.videoUri
+                    val videoFile = File(videoPath)
+                    if (videoFile.exists() && hasConfiguredKey) {
                         addLog("[1/2] Bóc tách luồng âm thanh thực tế từ tệp video...")
                         _uiState.update {
                             it.copy(
@@ -1230,7 +1232,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                             }
                             val transcribedSegments = TranslationService.transcribeAndTranslateAudioWithGemini(
                                 audioFile = extracted.audioFile,
-                                userApiKey = effectiveApiKey,
+                                userApiKey = userApiKeyInput,
                                 videoTitle = project.title,
                                 projectId = project.id
                             )
@@ -1269,7 +1271,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 addLog("[2/2] Dịch thuật ngữ cảnh toàn bộ ${rawSource.size} câu thoại với $engineName...")
                 val updatedSegments = TranslationService.translateBatchSegments(
                     segments = rawSource,
-                    userApiKey = effectiveApiKey,
+                    userApiKey = userApiKeyInput,
                     videoTitle = project.title,
                     videoCategory = videoCategory
                 ) { pct, msg ->

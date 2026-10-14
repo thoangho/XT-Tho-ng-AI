@@ -263,13 +263,6 @@ object GeminiAudioSubtitler {
     }
 
     private fun getEffectiveKeys(userApiKey: String?): List<String> {
-        val keys = mutableListOf<String>()
-        val parsed = ApiKeyManager.parseApiKeys(userApiKey)
-        keys.addAll(parsed)
-        val buildKey = ApiKeyManager.sanitizeApiKey(BuildConfig.GEMINI_API_KEY)
-        if (buildKey.isNotBlank() && buildKey != "MY_GEMINI_API_KEY" && !keys.contains(buildKey)) {
-            keys.add(buildKey)
-        }
-        return keys
+        return ApiKeyManager.getActiveApiKeys(null, userApiKey)
     }
 }
