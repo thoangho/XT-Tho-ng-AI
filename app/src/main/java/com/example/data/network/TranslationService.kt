@@ -454,7 +454,7 @@ object TranslationService {
         val keysToTry = if (allCandidateKeys.isNotEmpty()) allCandidateKeys else listOf(apiKey)
         
         for ((idx, currentKey) in keysToTry.withIndex()) {
-            val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$currentKey"
+            val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$currentKey"
 
             val prompt = """
                 Bạn là chuyên gia dịch thuật và lồng tiếng video ngắn Douyin/TikTok sang Tiếng Việt cho hệ thống XThoáng AI.
@@ -683,7 +683,7 @@ object TranslationService {
         }
 
         for ((idx, currentKey) in effectiveKeys.withIndex()) {
-            val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$currentKey"
+            val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$currentKey"
             val request = Request.Builder()
                 .url(url)
                 .post(jsonBody.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
@@ -811,7 +811,7 @@ object TranslationService {
         }
 
         for ((idx, currentKey) in keysToTry.withIndex()) {
-            val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$currentKey"
+            val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$currentKey"
             val request = Request.Builder()
                 .url(url)
                 .post(jsonBody.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))

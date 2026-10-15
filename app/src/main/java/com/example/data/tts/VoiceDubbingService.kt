@@ -15,6 +15,10 @@ import java.io.File
 import java.util.Locale
 import java.util.UUID
 import kotlin.coroutines.resume
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import com.aistudio.dubstudio.vmqxrt.tts.EdgeTTSEngine
+import com.aistudio.dubstudio.vmqxrt.tts.NeuralVoice
 
 class VoiceDubbingService(private val context: Context) {
     private val TAG = "VoiceDubbingService"
@@ -211,21 +215,28 @@ class VoiceDubbingService(private val context: Context) {
     }
 
     /**
-     * Preview single sentence aloud
+     * Preview single sentence aloud using Edge-TTS Neural Voice
      */
     fun speakText(text: String, config: DubbingConfig, durationMs: Long = 0L) {
         val sanitized = TranslationService.sanitizeForTts(text)
         if (sanitized.isBlank()) return
 
-        val dynamicRate = if (durationMs > 0L) calculateDynamicSpeechRate(text, durationMs, config.speechRate) else null
-        applyVoiceConfig(config, dynamicRate)
-        val params = Bundle().apply {
-            putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, config.dubVoiceVolume)
+        val neuralVoice = NeuralVoice.fromId(config.voiceId)
+        CoroutineScope(Dispatchers.Main).launch {
+            val previewSuccess = EdgeTTSEngine.previewVoice(context, sanitized, neuralVoice)
+            if (!previewSuccess) {
+                val dynamicRate = if (durationMs > 0L) calculateDynamicSpeechRate(text, durationMs, config.speechRate) else null
+                applyVoiceConfig(config, dynamicRate)
+                val params = Bundle().apply {
+                    putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, config.dubVoiceVolume)
+                }
+                tts?.speak(sanitized, TextToSpeech.QUEUE_FLUSH, params, "preview_${UUID.randomUUID()}")
+            }
         }
-        tts?.speak(sanitized, TextToSpeech.QUEUE_FLUSH, params, "preview_${UUID.randomUUID()}")
     }
 
     fun stopSpeaking() {
+        EdgeTTSEngine.stopPreview()
         tts?.stop()
         onDuckingChange?.invoke(false)
     }
@@ -300,6 +311,18 @@ class VoiceDubbingService(private val context: Context) {
 
         val cacheDir = File(context.cacheDir, "dubbing_audio")
         if (!cacheDir.exists()) cacheDir.mkdirs()
+
+        // 1. Thử tạo âm thanh bằng EdgeTTSEngine Neural Voice trước tiên
+        val neuralVoice = NeuralVoice.fromId(config.voiceId)
+        val edgeOutputFile = File(cacheDir, "dub_seg_${segmentId}_${config.voiceId}.mp3")
+        if (edgeOutputFile.exists() && edgeOutputFile.length() > 1024) {
+            return@withContext edgeOutputFile
+        }
+
+        val edgeOk = EdgeTTSEngine.generateTtsToFile(sanitized, neuralVoice, edgeOutputFile)
+        if (edgeOk && edgeOutputFile.exists() && edgeOutputFile.length() > 1024) {
+            return@withContext edgeOutputFile
+        }
 
         val outputFile = File(cacheDir, "dub_seg_${segmentId}_${config.voiceId}.wav")
         if (outputFile.exists() && outputFile.length() > 44) {

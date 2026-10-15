@@ -45,7 +45,7 @@ object ApiKeyManager {
 
     /**
      * Validates Gemini API Key by sending a lightweight test request ('ping')
-     * to Google AI Studio Generative Language API (gemini-2.5-flash).
+     * to Google AI Studio Generative Language API (gemini-1.5-flash, fallback to gemini-2.0-flash).
      * Returns Result.success(true) if key is active and functional.
      */
     suspend fun validateGeminiApiKey(apiKey: String): Result<Boolean> {
@@ -55,59 +55,71 @@ object ApiKeyManager {
         }
 
         return withContext(Dispatchers.IO) {
-            try {
-                val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$cleanKey"
-                val jsonBody = JSONObject().apply {
-                    put("contents", JSONArray().apply {
-                        put(JSONObject().apply {
-                            put("parts", JSONArray().apply {
-                                put(JSONObject().apply {
-                                    put("text", "ping")
-                                })
+            val models = listOf("gemini-1.5-flash", "gemini-2.0-flash")
+            val jsonBody = JSONObject().apply {
+                put("contents", JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("parts", JSONArray().apply {
+                            put(JSONObject().apply {
+                                put("text", "ping")
                             })
                         })
                     })
-                    put("generationConfig", JSONObject().apply {
-                        put("maxOutputTokens", 16)
-                        put("temperature", 0.1)
-                    })
-                }
+                })
+                put("generationConfig", JSONObject().apply {
+                    put("maxOutputTokens", 16)
+                    put("temperature", 0.1)
+                })
+            }
+            val payload = jsonBody.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
 
-                val request = Request.Builder()
-                    .url(url)
-                    .post(jsonBody.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
-                    .build()
+            for ((mIdx, model) in models.withIndex()) {
+                val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$cleanKey"
+                val request = Request.Builder().url(url).post(payload).build()
 
-                httpClient.newCall(request).execute().use { response ->
-                    val responseStr = response.body?.string().orEmpty()
-                    when (response.code) {
-                        200 -> {
-                            val json = JSONObject(responseStr)
-                            val candidates = json.optJSONArray("candidates")
-                            if (candidates != null && candidates.length() > 0) {
-                                Result.success(true)
-                            } else {
-                                Result.failure(Exception("API Key không phản hồi dữ liệu hợp lệ."))
+                try {
+                    httpClient.newCall(request).execute().use { response ->
+                        val responseStr = response.body?.string().orEmpty()
+                        when (response.code) {
+                            200 -> {
+                                val json = JSONObject(responseStr)
+                                val candidates = json.optJSONArray("candidates")
+                                return@withContext if (candidates != null && candidates.length() > 0) {
+                                    Result.success(true)
+                                } else {
+                                    Result.failure(Exception("API Key không phản hồi dữ liệu hợp lệ."))
+                                }
+                            }
+                            404 -> {
+                                if (mIdx < models.size - 1) {
+                                    Log.w(TAG, "Model $model returned 404. Falling back to next model...")
+                                    // continue to next model
+                                } else {
+                                    return@withContext Result.failure(Exception("Endpoint hoặc Model Gemini không tồn tại (Mã lỗi 404)."))
+                                }
+                            }
+                            400 -> {
+                                return@withContext Result.failure(Exception("API Key không đúng định dạng (Mã lỗi 400)."))
+                            }
+                            403 -> {
+                                return@withContext Result.failure(Exception("API Key bị từ chối hoặc chưa kích hoạt quyền Generative Language API (Mã lỗi 403)."))
+                            }
+                            429 -> {
+                                return@withContext Result.failure(Exception("API Key đã vượt quá hạn ngạch (Mã lỗi 429 - Quota Exceeded)."))
+                            }
+                            else -> {
+                                return@withContext Result.failure(Exception("Lỗi kết nối máy chủ Google AI Studio (Mã lỗi: ${response.code})."))
                             }
                         }
-                        400 -> {
-                            Result.failure(Exception("API Key không đúng định dạng (Mã lỗi 400)."))
-                        }
-                        403 -> {
-                            Result.failure(Exception("API Key bị từ chối hoặc chưa kích hoạt quyền Generative Language API (Mã lỗi 403)."))
-                        }
-                        429 -> {
-                            Result.failure(Exception("API Key đã vượt quá hạn ngạch (Mã lỗi 429 - Quota Exceeded)."))
-                        }
-                        else -> {
-                            Result.failure(Exception("Lỗi kết nối máy chủ Google AI Studio (Mã lỗi: ${response.code})."))
-                        }
+                    }
+                } catch (e: Exception) {
+                    if (mIdx == models.size - 1) {
+                        Log.e(TAG, "Validation failed", e)
+                        return@withContext Result.failure(Exception("Không thể kết nối đến Google AI Studio: ${e.localizedMessage ?: "Lỗi kết nối"}"))
                     }
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Validation failed", e)
-                Result.failure(Exception("Không thể kết nối đến Google AI Studio: ${e.localizedMessage ?: "Lỗi kết nối"}"))
             }
+            Result.failure(Exception("Không thể xác thực API Key."))
         }
     }
 
