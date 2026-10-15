@@ -161,16 +161,44 @@ class DubbingViewModel(application: Application? = null) : ViewModel() {
                     concatListFile.writeText(sb.toString())
 
                     val masterAudio = File(cacheDir, "master_dubbed_${System.currentTimeMillis()}.wav")
+                    val validFiles = audioFiles.filter { it.exists() && it.length() > 44 }
+                    if (validFiles.isEmpty()) {
+                        return@withContext null
+                    }
+
                     val concatCmd = "-f concat -safe 0 -i \"${concatListFile.absolutePath}\" -c copy \"${masterAudio.absolutePath}\" -y"
                     val session = com.arthenica.ffmpegkit.FFmpegKit.execute(concatCmd)
 
                     concatListFile.delete()
 
-                    if (com.arthenica.ffmpegkit.ReturnCode.isSuccess(session.returnCode) && masterAudio.exists()) {
+                    if (com.arthenica.ffmpegkit.ReturnCode.isSuccess(session.returnCode) && masterAudio.exists() && masterAudio.length() > 44) {
                         masterAudio
                     } else {
-                        // Fallback: nếu chỉ có 1 file
-                        audioFiles.firstOrNull { it.exists() }
+                        // Ghép nối trực tiếp bằng PCM nếu FFmpeg copy gặp sự khác biệt format WAV
+                        try {
+                            var totalBytes = 0
+                            val audioBuffers = mutableListOf<ByteArray>()
+                            for (f in validFiles) {
+                                val b = f.readBytes()
+                                if (b.size > 44) {
+                                    val pcm = b.copyOfRange(44, b.size)
+                                    audioBuffers.add(pcm)
+                                    totalBytes += pcm.size
+                                }
+                            }
+                            if (totalBytes > 0) {
+                                java.io.FileOutputStream(masterAudio).use { fos ->
+                                    com.example.data.video.VideoExportService.writeWavHeader(fos, totalBytes, 24000, 1, 16)
+                                    for (buf in audioBuffers) {
+                                        fos.write(buf)
+                                    }
+                                }
+                                masterAudio
+                            } else null
+                        } catch (e: Exception) {
+                            android.util.Log.e("DubbingVM", "Lỗi PCM concat fallback: ${e.message}")
+                            null
+                        }
                     }
                 } catch (e: Exception) {
                     android.util.Log.e("DubbingVM", "Lỗi ghép audio: ${e.message}", e)
@@ -178,9 +206,9 @@ class DubbingViewModel(application: Application? = null) : ViewModel() {
                 }
             }
 
-            if (mergedAudioFile == null || !mergedAudioFile.exists()) {
+            if (mergedAudioFile == null || !mergedAudioFile.exists() || mergedAudioFile.length() <= 44) {
                 _isDubbing.value = false
-                _statusText.value = "Lỗi ghép nối âm thanh"
+                _statusText.value = "Lỗi tạo file âm thanh lồng tiếng hoàn chỉnh"
                 onComplete(false, null)
                 return@launch
             }
